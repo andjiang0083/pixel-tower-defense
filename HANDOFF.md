@@ -1,6 +1,13 @@
-# HANDOFF — tab5-tower-defense v0.4.0（新会话继续工作的提示词）
+# HANDOFF — tab5-tower-defense（历史详述）
 
-> 复制下面「给 AI 的开场白」整段发给新会话即可接上；本文件是唯一的交接真源。
+> ⚠️ **状态块（2026-10-12 00:55 CST，覆盖本文下方一切旧描述）**
+> **新会话的权威提示词已迁到 [`docs/HANDOFF-PROMPT.md`](docs/HANDOFF-PROMPT.md) —— 要唤起新会话就贴那一份，不要再贴本文件。**
+> 本文件保留为**发布前的详述存档**（含 v0.4 开发期细节）；与提示词文件冲突时，**以 `docs/HANDOFF-PROMPT.md` 为准**。
+>
+> 已发生、本文尚未反映的变化：项目已**命名 PIXEL TOWER DEFENSE**、已**开源**（github.com/andjiang0083/pixel-tower-defense，MIT，release v0.4.0 已挂 8 个资产）、
+> 已**提交 M5Burner**（PENDING 审核，fid `2109325922859773953` / vid `2109325922863968258`）、
+> 已出**双语宣传图**（`releases/cover-*.png`、`releases/poster-*.png`，`tools/mkposter.py` 可重出）、
+> 已有**开发树→公开树单向同步**纪律（`tools/sync-public.sh`）与**依赖钉版**（M5Unified 0.2.25 / M5GFX 0.2.32）。
 
 ---
 
