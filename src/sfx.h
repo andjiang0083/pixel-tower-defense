@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 // sfx.h — 程序化音效运行时：事件环形队列 + 帧间隙派发 + 节流防吵
 // 音频数据零文件资源：tools/gen_sfx.py 合成 → sfx_data.h（48kHz，codec 原生率）。
 // 硬件路径 = M5.Speaker.playRaw（M5Unified 自带混音任务，多轨重叠 OK）；

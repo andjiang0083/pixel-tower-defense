@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 // touch.h — 触摸输入处理（Tab5 = GT911 / ST7123 电容屏，经 M5GFX 抽象）
 // 关键：非阻塞。塔防世界必须持续运转，绝不能因为手指压着屏幕而卡住主循环。
 // 判定方式 = tap-on-release：记下按下点，抬手时若位移很小才算一次点击。

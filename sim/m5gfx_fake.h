@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 // sim/m5gfx_fake.h — PC 端替身：把 M5GFX 的绘制原语写进内存帧缓冲
 // 目的：用**同一份 render.h / pixel_text.h / game.h**在 PC 上跑，
 // 验证的是固件真实代码路径，不是另写一遍模拟器。

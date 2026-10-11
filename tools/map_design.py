@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 andjiang0083
 """map_design.py — 关卡地图审计器（读 layout.py 唯一真源，出指标表 + 热力图）。
 
 设计哲学（讨论定稿，见 SPEC-v0.4.md）：

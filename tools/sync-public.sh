@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 andjiang0083
 # sync-public.sh — 把开发树同步到公开仓的工作副本（单向，别反向手改公开树）
 #
 # 用法：在开发树里执行

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 andjiang0083
 """生成 pixel_font.h —— 5x7 ASCII 点阵，手写位图（不引用任何外部字体文件）。
 
 规则：
@@ -112,7 +114,9 @@ for c in range(FIRST, LAST + 1):
 HEART = GLYPHS['♥'].split()
 BLOCK = GLYPHS['█'].split()
 
-out = """// pixel_font.h -- 5x7 ASCII point matrix, hand-authored in tools/gen_font.py.
+out = """// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 andjiang0083
+// pixel_font.h -- 5x7 ASCII point matrix, hand-authored in tools/gen_font.py.
 // glyph[c-32][row]; bit4 = leftmost column (only low 5 bits used).
 // Rendered glyph-by-glyph with fillRect(): no bitmap/image assets at runtime.
 #pragma once

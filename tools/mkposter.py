@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 andjiang0083
 """mkposter.py — 生成 PIXEL TOWER DEFENSE 宣传图（中英双语）。
 
 零外部素材原则延伸到宣传图：画面来自**游戏真机渲染帧**（仿真的 PPM 截图），

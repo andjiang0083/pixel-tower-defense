@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 // render.h — 画面渲染（只调用 fillRect / drawPixel，全部矩形像素风）
 // Tab5 是 RAM 帧缓冲（MIPI DSI video mode），画面常驻内存，
 // 所以静态地图只在开局画一次；每帧只擦除"脏格子"并重画活动实体。

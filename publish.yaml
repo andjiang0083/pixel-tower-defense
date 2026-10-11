@@ -1,0 +1,13 @@
+# PIXEL TOWER DEFENSE — M5Burner 发布清单
+# 发布前跑：python3 ~/esp32/tools/release.py tab5-tower-defense --strict
+# （bin 必须是真 merged：bootloader@0x2000 + 分区表@0x8000 + boot_app0@0xe000 + app@0x10000）
+project: tab5-tower-defense
+platform_entries:
+  - name: PIXEL TOWER DEFENSE
+    device: Tab5
+    category: Games
+    version: "0.4.0"
+    bin: releases/pixel-tower-defense-v0.4.0-tab5-merged.bin
+    cover: releases/cover-1280x720-pixel-tower-defense-tab5.png
+    project_link: "https://github.com/andjiang0083/pixel-tower-defense"
+    readback:

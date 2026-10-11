@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 // game.h — 游戏数据与逻辑更新（不碰任何绘制 API，模块分离）
 // v0.2.0：10 关卡系统——多路径（双出生点）、主题由 layout.py 下发、
 //         HEALER/ELITE 新敌、BOSS 技能（治疗光环/产卵）、关卡解锁进度。

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 // actions.h — 触摸事件 → 游戏动作的派发（唯一消费点）
 // v0.2.0 点击优先级：选关界面 > Game Over / Level Clear >
 //   升级面板按钮/关闭 > NEXT WAVE > 建造栏选塔种 > 已建塔(开面板) > 地图空地(建塔)

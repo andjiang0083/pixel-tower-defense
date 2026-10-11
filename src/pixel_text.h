@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 // pixel_text.h — 用 fillRect 逐像素画字（不加载任何字体/位图资源）
 // 字形来自 tools/gen_font.py 生成的 pixel_font.h（5x7，bit4=最左列）
 #pragma once

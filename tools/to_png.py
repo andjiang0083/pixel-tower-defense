@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 andjiang0083
 """PPM -> PNG（stdlib only），把 PC 仿真的帧缓冲转成能贴进对话的图。"""
 import sys, zlib, struct
 

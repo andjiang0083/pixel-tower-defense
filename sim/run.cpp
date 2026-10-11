@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 // sim/run.cpp — 用**固件真实源码**(game.h/render.h/actions.h/touch.h)在 PC 上跑
 // 编译方式：-Isim/compat 让 #include <M5Unified.h> / <M5GFX.h> 命中替身，
 //           其余 include（config_gen/pixel_font/game/render/actions/touch）全是原文件。
