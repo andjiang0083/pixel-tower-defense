@@ -1,0 +1,77 @@
+name: Bug report / Bug 反馈
+description: Something behaves wrong on the device or in the simulator
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Vague reports cost more time than no report —
+        please fill in the fields below.
+        感谢反馈。请把下面的字段填完：能复现的信息比"感觉不对"有用得多。
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version / 固件版本
+      description: Shown in the serial banner at boot, e.g. `PIXEL TOWER DEFENSE v0.4.0`
+      placeholder: v0.4.0
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did you see it? / 在哪出现的
+      options:
+        - "On the device (M5Stack Tab5)"
+        - "In the PC simulator (sim/run.cpp)"
+        - "Both / 两者都有"
+        - "Build or flashing problem / 编译刷机问题"
+    validations:
+      required: true
+  - type: input
+    id: level
+    attributes:
+      label: Level and wave / 关卡与波次
+      description: e.g. `L13 SAND COIL, wave 9/16`
+      placeholder: L13 SAND COIL, wave 9/16
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect? / 实际发生 vs 预期
+      placeholder: |
+        I tapped a rock cell and a tower was built on it.
+        我点了岩石格，结果塔建上去了。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      placeholder: |
+        1. Unlock up to L15
+        2. Start wave 1
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: power
+    attributes:
+      label: Does it recover by itself? / 能自己恢复吗
+      description: >-
+        This single field separates software panics from hardware-level deadlocks,
+        which have completely different causes.
+      options:
+        - "Recovers after a reset / 复位后恢复"
+        - "Needs a full power cycle / 必须断电重上电"
+        - "Screen stays black, never boots / 黑屏起不来"
+        - "Not applicable / 不适用"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Serial log / 串口日志
+      description: >-
+        `pio device monitor` output around the moment it went wrong (the boot banner
+        plus the last lines). Rendered as code, no need for backticks.
+      render: text

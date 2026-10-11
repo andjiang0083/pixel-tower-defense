@@ -1,0 +1,52 @@
+name: Feature or map idea / 功能或地图想法
+description: Suggest a tower, enemy, boss ability, or a new map
+title: "[idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Read this first:** the project has two hard constraints — *zero asset
+        files* (everything is drawn by `fillRect` and synthesised by code) and
+        *one source of truth* (`tools/layout.py`). Ideas that need pictures,
+        audio files or a second config file will be declined no matter how nice
+        they are.
+        **先读这条**：项目有两条硬约束——零素材文件（画面全靠 fillRect，音效全靠算）
+        与单一真源（`tools/layout.py`）。需要图片、音频文件或第二份配置文件的点子，
+        再好也会被拒。
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of idea? / 哪一类想法
+      options:
+        - "New map / 新地图"
+        - "New tower / 新塔"
+        - "New enemy / 新敌人"
+        - "New boss ability / 新 BOSS 技能"
+        - "Quality of life / 体验改进"
+        - "Performance / 性能"
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea / 想法
+      description: One paragraph. What does the player do differently because of it?
+    validations:
+      required: true
+  - type: textarea
+    id: fits
+    attributes:
+      label: How does it keep the constraints? / 怎么满足上面两条约束
+      placeholder: |
+        - drawn with existing palette and fillRect only
+        - values live in tools/layout.py, no new config file
+    validations:
+      required: true
+  - type: textarea
+    id: numbers
+    attributes:
+      label: Numbers (if you have them) / 数值（如果有）
+      description: >-
+        Cost, damage, range in cells, health multiplier, waves. Rough is fine —
+        "it should be good against armour" is not a number.

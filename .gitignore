@@ -1,0 +1,22 @@
+# 构建产物（246MB，绝不入库）
+.pio/
+sim/sim
+sim/*.dSYM
+*.o
+*.bin
+*.elf
+*.map
+.vscode/
+
+# 仿真/预览的中间产物（可再生成，真源在 tools/）
+sim_*.ppm
+shot*.ppm
+preview-lv*.png
+/preview.png
+
+# 发行镜像：只入库 .sha256 与说明，二进制走 Release 附件
+releases/*.bin
+!releases/*.sha256
+
+# macOS
+.DS_Store
