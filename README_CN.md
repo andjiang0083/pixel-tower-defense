@@ -5,6 +5,8 @@
 
 [English README →](README.md) · [构建与刷机 →](BUILDING_CN.md) · [参与贡献 →](CONTRIBUTING_CN.md) · [English contributing →](CONTRIBUTING.md)
 
+[![CI](https://github.com/andjiang0083/pixel-tower-defense/actions/workflows/sim.yml/badge.svg)](https://github.com/andjiang0083/pixel-tower-defense/actions/workflows/sim.yml)
+
 ![PIXEL TOWER DEFENSE](releases/cover-1280x720-pixel-tower-defense-tab5.png)
 
 > 这个仓库的架构和大部分代码，是**本机大模型**写的（作者 Mac 上跑的 4-bit
@@ -148,7 +150,7 @@ pio run -e tab5 -t upload            # USB-C 烧录
 | 8 种 BOSS 技能、中段 Boss、多王关 | ✅ |
 | 程序化音效 + 静音偏好 | ✅ |
 | 岩层（L15/L16/L18/L20） | ✅ |
-| PC 仿真：20 关全跑 + 断言 | ✅ 165 项检查，0 失败 |
+| PC 仿真：20 关全跑 + 断言 | ✅ 178 项检查，0 失败 |
 | **无尽模式** | ❌ 引擎与参数都在，**缺 UI 入口** |
 | 无尽最高波次记录（NVS） | ❌ 未实现 |
 | 中途存档续玩 | ❌ 有意不做 |

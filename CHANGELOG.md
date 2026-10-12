@@ -40,6 +40,10 @@ Under the hood:
 - Renderer: run-length merged pixel-font drawing; HUD erase boxes sized for
   their longest possible content (incl. endless-mode 6-digit gold).
 
+Verified on hardware (2026-10-12): the merged image was flashed to a Tab5
+(ESP32-P4) and read back byte-identical outside the NVS partition; the
+previous save survived and loaded. Evidence in `docs/FIXLOG-v0.4.1.md` §三.
+
 ## v0.4.0 — 20 levels, and difficulty that comes from space
 
 - **10 new maps (L11–L20)** designed around coverage budget instead of bigger numbers

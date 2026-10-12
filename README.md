@@ -6,6 +6,8 @@ No third-party fonts.**
 
 [中文版 README →](README_CN.md) · [Build & flash →](BUILDING.md) · [Contributing →](CONTRIBUTING.md) · [中文贡献指南 →](CONTRIBUTING_CN.md)
 
+[![CI](https://github.com/andjiang0083/pixel-tower-defense/actions/workflows/sim.yml/badge.svg)](https://github.com/andjiang0083/pixel-tower-defense/actions/workflows/sim.yml)
+
 ![PIXEL TOWER DEFENSE](releases/cover-1280x720-pixel-tower-defense-tab5.png)
 
 > Architecture and most of the code in this repository were written by a
@@ -152,7 +154,7 @@ Two design rules that came out of this work:
 | 8 boss abilities, mid-bosses, multi-boss levels | ✅ |
 | Procedural SFX + mute preference | ✅ |
 | Rock (no-build) layers on L15/L16/L18/L20 | ✅ |
-| PC simulator that plays all 20 levels with assertions | ✅ 165 checks, 0 failures |
+| PC simulator that plays all 20 levels with assertions | ✅ 178 checks, 0 failures |
 | **Endless mode** | ❌ engine and parameters exist, **no UI entry point yet** |
 | Endless best-wave record in NVS | ❌ not implemented |
 | Save/resume of a game in progress | ❌ deliberately out of scope |
