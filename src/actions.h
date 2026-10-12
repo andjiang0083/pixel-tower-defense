@@ -42,6 +42,21 @@ static void refreshAllUI(M5GFX* d) {
   drawButton(d, true);
 }
 
+// ── v0.4.3：整屏重建（背景/建造栏/HUD/按钮 + 全部实体）────────────
+// 为什么需要它：引导 overlay 是**画在已有画面之上**的（压暗块 + 对话框），
+// 而脏格机制只擦"有实体走过的格子"。所以 overlay 一旦画上，
+// 覆盖区域内**没有实体经过的地方就再也擦不掉**——玩家看到的就是
+// 教程结束后画面残留一块，走到哪都不刷新。
+// → 关闭 overlay（step 归零）时必须整屏重建，把压暗块一次性清掉。
+static void redrawAll(M5GFX* d) {
+  refreshAllUI(d);
+  // refreshAllUI 只画静态 UI，实体要补画（与 renderFrame 的顺序一致）
+  for (int i = 0; i < MAX_TOWERS; ++i)  if (g_w.towers[i].active)  drawTower(d, g_w.towers[i]);
+  for (int i = 0; i < MAX_ENEMIES; ++i) if (g_w.enemies[i].active) drawEnemy(d, g_w.enemies[i]);
+  for (int i = 0; i < MAX_BULLETS; ++i) if (g_w.bullets[i].active) drawBullet(d, g_w.bullets[i]);
+  for (int i = 0; i < MAX_FX; ++i)       if (g_w.fx[i].active)     drawFx(d, g_w.fx[i]);
+}
+
 // ── 选关节点命中（几何真源 config_gen.h selNodeX/Y）───────────────
 static int hitSelNode(int x, int y) {
   for (int i = 0; i < LEVEL_COUNT; ++i) {
@@ -88,6 +103,7 @@ static bool handleTap(M5GFX* d, const Tap& t) {
       g_onboardStep = 0;
       g_onboarded = true;
       progressSaveNow();                       // onboarded 落盘，永不重弹
+      redrawAll(d);                            // v0.4.3：整屏重建，清掉 overlay 残留
     }
     return false;
   }

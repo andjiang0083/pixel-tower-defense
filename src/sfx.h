@@ -48,14 +48,36 @@ static uint32_t s_simPlay[SFXID_COUNT];    // 仿真记账：每音效"起播"�
 static inline void sfxSetMuted(bool m) { s_muted = m; }
 static inline bool sfxIsMuted(void)    { return s_muted; }
 
+// ── v0.4.3 诊断计数器（定位"没声音"，定位完即删）─────────────────
+// 把"投递 → 节流 → 入队 → 起播"四段的收支分开记账，
+// 一眼就能看出声音是在哪一环断的，而不是靠猜。
+static uint32_t s_nPost = 0;        // sfxPost 被调用次数
+static uint32_t s_nDropMute = 0;    // 因静音丢弃
+static uint32_t s_nDropThr = 0;     // 因节流（间隔未到）丢弃
+static uint32_t s_nDropFull = 0;    // 因队列满丢弃
+static uint32_t s_nPump = 0;        // sfxPump 被调用次数
+static uint32_t s_nQOk = 0;         // playRaw 返回 true 次数
+static uint32_t s_nQFail = 0;       // playRaw 返回 false 次数
+
+static inline void sfxDiagReset(void) {
+  s_nPost = s_nDropMute = s_nDropThr = s_nDropFull = 0;
+  s_nPump = s_nQOk = s_nQFail = 0;
+}
+// 返回四段计数（post / throttle-drop / queued-ok / queued-fail）
+static inline void sfxDiagGet(uint32_t* o) {
+  o[0] = s_nPost; o[1] = s_nDropMute; o[2] = s_nDropThr;
+  o[3] = s_nDropFull; o[4] = s_nPump; o[5] = s_nQOk; o[6] = s_nQFail;
+}
+
 // 投递一个音效事件：静音/间隔未到 → 直接丢弃（零成本）
 static void sfxPost(uint8_t id) {
-  if (s_muted || id >= SFXID_COUNT) return;
+  ++s_nPost;
+  if (s_muted || id >= SFXID_COUNT) { ++s_nDropMute; return; }
   uint32_t iv = s_nowMs - s_lastMs[id];
-  if (iv < SFX_MIN_IV[id]) return;
+  if (iv < SFX_MIN_IV[id]) { ++s_nDropThr; return; }
   s_lastMs[id] = s_nowMs;
   uint8_t next = (uint8_t)((s_qHead + 1) % SFX_QUEUE);
-  if (next == s_qTail) return;              // 队列满：丢最轻的（直接丢弃新事件）
+  if (next == s_qTail) { ++s_nDropFull; return; }  // 队列满：丢弃新事件
   s_q[s_qHead] = id;
   s_qHead = next;
 }
@@ -66,26 +88,29 @@ static void sfxPump(void) {
 #ifdef ARDUINO_M5STACK_TAB5
   static bool begun = false;
   if (!begun) { M5.Speaker.begin(); M5.Speaker.setVolume(200); begun = true; }
+  ++s_nPump;
   int budget = 3;                           // 每帧最多起播3条：混音器也怕齐射尖峰
   while (budget-- > 0 && s_qTail != s_qHead) {
     uint8_t id = s_q[s_qTail];
     s_qTail = (uint8_t)((s_qTail + 1) % SFX_QUEUE);
+    bool ok = false;
     switch (id) {
-      case SFXID_GUN:    M5.Speaker.playRaw(SFX_GUN,   SFX_GUN_LEN,   SFX_SR, false, 1, -1, false); break;
-      case SFXID_GUN2:   M5.Speaker.playRaw(SFX_GUN2,  SFX_GUN2_LEN,  SFX_SR, false, 1, -1, false); break;
-      case SFXID_GUN3:   M5.Speaker.playRaw(SFX_GUN3,  SFX_GUN3_LEN,  SFX_SR, false, 1, -1, false); break;
-      case SFXID_CANNON: M5.Speaker.playRaw(SFX_CANNON, SFX_CANNON_LEN,SFX_SR, false, 1, -1, false); break;
-      case SFXID_BOOM:   M5.Speaker.playRaw(SFX_BOOM,   SFX_BOOM_LEN,  SFX_SR, false, 1, -1, false); break;
-      case SFXID_LASER:  M5.Speaker.playRaw(SFX_LASER,  SFX_LASER_LEN, SFX_SR, false, 1, -1, false); break;
-      case SFXID_FROST:  M5.Speaker.playRaw(SFX_FROST,  SFX_FROST_LEN, SFX_SR, false, 1, -1, false); break;
-      case SFXID_COIN:   M5.Speaker.playRaw(SFX_COIN,   SFX_COIN_LEN,  SFX_SR, false, 1, -1, false); break;
-      case SFXID_HIT:    M5.Speaker.playRaw(SFX_HIT,    SFX_HIT_LEN,   SFX_SR, false, 1, -1, false); break;
-      case SFXID_LEAK:   M5.Speaker.playRaw(SFX_LEAK,   SFX_LEAK_LEN,  SFX_SR, false, 1, -1, false); break;
-      case SFXID_CLEAR:  M5.Speaker.playRaw(SFX_CLEAR,  SFX_CLEAR_LEN,  SFX_SR, false, 1, -1, false); break;
-      case SFXID_ROTOR:  M5.Speaker.playRaw(SFX_ROTOR, SFX_ROTOR_LEN, SFX_SR, false, 1, -1, false); break;
-      case SFXID_HORN:   M5.Speaker.playRaw(SFX_HORN,  SFX_HORN_LEN,  SFX_SR, false, 1, -1, false); break;
-      case SFXID_EMP:    M5.Speaker.playRaw(SFX_EMP,   SFX_EMP_LEN,   SFX_SR, false, 1, -1, false); break;
+      case SFXID_GUN:    ok = M5.Speaker.playRaw(SFX_GUN,   SFX_GUN_LEN,   SFX_SR, false, 1, -1, false); break;
+      case SFXID_GUN2:   ok = M5.Speaker.playRaw(SFX_GUN2,  SFX_GUN2_LEN,  SFX_SR, false, 1, -1, false); break;
+      case SFXID_GUN3:   ok = M5.Speaker.playRaw(SFX_GUN3,  SFX_GUN3_LEN,  SFX_SR, false, 1, -1, false); break;
+      case SFXID_CANNON: ok = M5.Speaker.playRaw(SFX_CANNON, SFX_CANNON_LEN,SFX_SR, false, 1, -1, false); break;
+      case SFXID_BOOM:   ok = M5.Speaker.playRaw(SFX_BOOM,   SFX_BOOM_LEN,  SFX_SR, false, 1, -1, false); break;
+      case SFXID_LASER:  ok = M5.Speaker.playRaw(SFX_LASER,  SFX_LASER_LEN, SFX_SR, false, 1, -1, false); break;
+      case SFXID_FROST:  ok = M5.Speaker.playRaw(SFX_FROST,  SFX_FROST_LEN, SFX_SR, false, 1, -1, false); break;
+      case SFXID_COIN:   ok = M5.Speaker.playRaw(SFX_COIN,   SFX_COIN_LEN,  SFX_SR, false, 1, -1, false); break;
+      case SFXID_HIT:    ok = M5.Speaker.playRaw(SFX_HIT,    SFX_HIT_LEN,   SFX_SR, false, 1, -1, false); break;
+      case SFXID_LEAK:   ok = M5.Speaker.playRaw(SFX_LEAK,   SFX_LEAK_LEN,  SFX_SR, false, 1, -1, false); break;
+      case SFXID_CLEAR:  ok = M5.Speaker.playRaw(SFX_CLEAR,  SFX_CLEAR_LEN,  SFX_SR, false, 1, -1, false); break;
+      case SFXID_ROTOR:  ok = M5.Speaker.playRaw(SFX_ROTOR, SFX_ROTOR_LEN, SFX_SR, false, 1, -1, false); break;
+      case SFXID_HORN:   ok = M5.Speaker.playRaw(SFX_HORN,  SFX_HORN_LEN,  SFX_SR, false, 1, -1, false); break;
+      case SFXID_EMP:    ok = M5.Speaker.playRaw(SFX_EMP,   SFX_EMP_LEN,   SFX_SR, false, 1, -1, false); break;
     }
+    if (ok) ++s_nQOk; else ++s_nQFail;
   }
 #else
   // PC 仿真：排空队列并记账——测试断言读 s_simPlay[]（与真机同份节流/投递）

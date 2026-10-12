@@ -1022,8 +1022,12 @@ static void drawOnboard(M5GFX* g, int step) {
   const int bw = 820, bh = 130;
   const int bx = (SCREEN_W - bw) / 2, by = SCREEN_H - bh - 150;
   // 半透明感压暗（稀疏暗块，同 Game Over 手法）
-  for (int y = 0; y < SCREEN_H; y += 8)
-    for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
+  // ⚠️ v0.4.3：网格 8px → 16px（块 4×4 → 8×8，覆盖率同为 25%，观感几乎一致）。
+  //   8px 时是 160×90 = **14400 次 fillRect**，单次 overlay 绘制就要几十毫秒；
+  //   叠加"每帧无条件重画"（见 main.cpp loop）后，PSRAM 写入风暴会与 DSI 扫描
+  //   DMA 抢 cache，死锁在 esp_cache_msync 的自旋锁上 → task_wdt panic 蓝屏。
+  for (int y = 0; y < SCREEN_H; y += 16)
+    for (int x = 0; x < SCREEN_W; x += 16) g->fillRect(x, y, 8, 8, C_BG);
   g->fillRect(bx, by, bw, bh, C_UI_BG);
   g->drawRect(bx, by, bw, bh, C_BTN_HI);
   g->drawRect(bx + 3, by + 3, bw - 6, bh - 6, C_BTN_HI);
