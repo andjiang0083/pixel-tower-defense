@@ -1,0 +1,14 @@
+=== PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===
+[   697][E][Preferences.cpp:47] begin(): nvs_open failed: NOT_FOUND
+unlock=0001 cleared=0000 levels=20 lang=EN endbest=0
+tap language = switch EN/中文 | tap = start
+[AUD] board=22 dout=26 bck=27 ws=29 mck=30 sr=48000 mag=4 port=0 stereo=0
+[AUD] isEnabled=1 muted=0
+[AUD] begin=1 isRunning=1
+[AUDHW] es8388 writes ok=28 fail=0 | dacpwr=3C fmt=18 mute=20 vol=21 | amp_bitOn=1 ampReg=76
+[AUD] toneA(1kHz,2s)=1 playing=1
+[AUD] t=5014ms st=0 post=0 muteDrop=0 thrDrop=0 fullDrop=0 pump=0 qOK=0 qFail=0 vol=255 playing=0 | hw dacpwr=3C amp=76
+[AUD] t=10015ms st=0 post=0 muteDrop=0 thrDrop=0 fullDrop=0 pump=0 qOK=0 qFail=0 vol=255 playing=0 | hw dacpwr=3C amp=76
+[AUD] t=15016ms st=0 post=0 muteDrop=0 thrDrop=0 fullDrop=0 pump=0 qOK=0 qFail=0 vol=255 playing=0 | hw dacpwr=3C amp=76
+[AUD] t=20017ms st=0 post=0 muteDrop=0 thrDrop=0 fullDrop=0 pump=0 qOK=0 qFail=0 vol=255 playing=0 | hw dacpwr=3C amp=76
+[AUD] t=25018ms st=0 post=0 muteDrop=0 thrDrop=0 fullDrop=0 pump=0 qOK=0 qFail=0 vol=255 playing=0 | hw dacpwr=3C amp=76

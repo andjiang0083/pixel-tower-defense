@@ -5,7 +5,7 @@
 #pragma once
 #include <stdint.h>
 
-#define SFX_SR 48000
+#define SFX_SR 16000
 
 // GUN: 机枪：超短亮噪哒 — 25ms
 static const int16_t SFX_GUN[] = {

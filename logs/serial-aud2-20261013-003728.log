@@ -1,0 +1,23 @@
+=== serial log start 00:37:28 port=/dev/cu.usbmodem1101 dur=25s ===
+port up after 0s
+[00:37:30] ESP-ROM:esp32p4-eco2-20240710
+[00:37:30] Build:Jul 10 2024
+[00:37:30] rst:0x17 (CHIP_USB_UART_RESET),boot:0x20c (SPI_FAST_FLASH_BOOT)
+[00:37:30] Core0 Saved PC:0x4ff03a6a
+[00:37:30] Core1 Saved PC:0x4ff03a6a
+[00:37:30] SPI mode:DIO, clock div:1
+[00:37:30] load:0x4ff33ce0,len:0x11dc
+[00:37:30] load:0x4ff29ed0,len:0xcc0
+[00:37:30] load:0x4ff2cbd0,len:0x3348
+[00:37:30] entry 0x4ff29ed0
+[00:37:31] === PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===
+[00:37:31] [   697][E][Preferences.cpp:47] begin(): nvs_open failed: NOT_FOUND
+[00:37:31] unlock=0001 cleared=0000 levels=20 lang=EN endbest=0
+[00:37:31] tap language = switch EN/中文 | tap = start
+[00:37:31] [AUD] board=22 dout=26 bck=27 ws=29 mck=30 sr=48000 mag=4 port=0 stereo=0
+[00:37:31] [AUD] isEnabled=1 muted=0
+[00:37:31] [AUD] begin=1 isRunning=1
+[00:37:31] [AUD] testPlay(COIN)=1 isPlaying=1 len=11040
+[00:37:41] . (silent 10s)
+[00:37:51] . (silent 10s)
+=== end 00:37:54  gaps=0  panic_lines=0 ===

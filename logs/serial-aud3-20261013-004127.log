@@ -1,0 +1,116 @@
+=== serial log start 00:41:27 port=/dev/cu.usbmodem1101 dur=480s ===
+port up after 0s
+[00:41:28] ESP-ROM:esp32p4-eco2-20240710
+[00:41:28] Build:Jul 10 2024
+[00:41:28] rst:0x17 (CHIP_USB_UART_RESET),boot:0x20c (SPI_FAST_FLASH_BOOT)
+[00:41:28] Core0 Saved PC:0x4ff03a6a
+[00:41:28] Core1 Saved PC:0x4fc19f4c
+[00:41:28] SPI mode:DIO, clock div:1
+[00:41:28] load:0x4ff33ce0,len:0x11dc
+[00:41:28] load:0x4ff29ed0,len:0xcc0
+[00:41:28] load:0x4ff2cbd0,len:0x3348
+[00:41:28] entry 0x4ff29ed0
+[00:41:29] === PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===
+[00:41:29] unlock=0001 cleared=0000 levels=20 lang=EN endbest=0
+[00:41:29] tap language = switch EN/中文 | tap = start
+[00:41:29] [AUD] board=22 dout=26 bck=27 ws=29 mck=30 sr=48000 mag=4 port=0 stereo=0
+[00:41:29] [AUD] isEnabled=1 muted=0
+[00:41:29] [AUD] begin=1 isRunning=1
+[00:41:29] [AUD] testPlay(CLEAR)=1 isPlaying=1 len=27840
+[00:41:33] [AUD] t=5000ms st=2 post=0 muteDrop=0 thrDrop=0 fullDrop=0 pump=6 qOK=0 qFail=0 vol=200 playing=0
+[00:41:38] [AUD] t=10003ms st=3 post=13 muteDrop=0 thrDrop=0 fullDrop=0 pump=151 qOK=13 qFail=0 vol=200 playing=1
+[00:41:43] [AUD] t=15003ms st=3 post=58 muteDrop=0 thrDrop=0 fullDrop=0 pump=301 qOK=58 qFail=0 vol=200 playing=0
+[00:41:48] [AUD] t=20003ms st=3 post=82 muteDrop=0 thrDrop=1 fullDrop=0 pump=450 qOK=81 qFail=0 vol=200 playing=0
+[00:41:53] [AUD] t=25003ms st=3 post=82 muteDrop=0 thrDrop=1 fullDrop=0 pump=601 qOK=81 qFail=0 vol=200 playing=0
+[00:41:58] [AUD] t=30004ms st=2 post=86 muteDrop=0 thrDrop=1 fullDrop=0 pump=749 qOK=85 qFail=0 vol=200 playing=1
+[00:42:03] [AUD] t=35004ms st=2 post=86 muteDrop=0 thrDrop=1 fullDrop=0 pump=891 qOK=85 qFail=0 vol=200 playing=0
+[00:42:08] [AUD] t=40005ms st=3 post=104 muteDrop=0 thrDrop=1 fullDrop=0 pump=1036 qOK=103 qFail=0 vol=200 playing=1
+[00:42:13] [AUD] t=45007ms st=3 post=150 muteDrop=0 thrDrop=1 fullDrop=0 pump=1185 qOK=149 qFail=0 vol=200 playing=1
+[00:42:18] [AUD] t=50008ms st=3 post=179 muteDrop=0 thrDrop=2 fullDrop=0 pump=1330 qOK=177 qFail=0 vol=200 playing=0
+[00:42:23] [AUD] t=55010ms st=3 post=179 muteDrop=0 thrDrop=2 fullDrop=0 pump=1479 qOK=177 qFail=0 vol=200 playing=0
+[00:42:28] [AUD] t=60012ms st=3 post=184 muteDrop=0 thrDrop=2 fullDrop=0 pump=1626 qOK=182 qFail=0 vol=200 playing=1
+[00:42:33] [AUD] t=65012ms st=2 post=185 muteDrop=0 thrDrop=2 fullDrop=0 pump=1769 qOK=183 qFail=0 vol=200 playing=0
+[00:42:38] [AUD] t=70014ms st=3 post=195 muteDrop=0 thrDrop=2 fullDrop=0 pump=1913 qOK=193 qFail=0 vol=200 playing=0
+[00:42:44] [AUD] t=75014ms st=3 post=239 muteDrop=0 thrDrop=2 fullDrop=0 pump=2061 qOK=237 qFail=0 vol=200 playing=0
+[00:42:49] [AUD] t=80014ms st=2 post=287 muteDrop=0 thrDrop=3 fullDrop=0 pump=2212 qOK=284 qFail=0 vol=200 playing=1
+[00:42:54] [AUD] t=85020ms st=3 post=321 muteDrop=0 thrDrop=3 fullDrop=0 pump=2361 qOK=318 qFail=0 vol=200 playing=0
+[00:42:59] [AUD] t=90034ms st=3 post=372 muteDrop=0 thrDrop=3 fullDrop=0 pump=2508 qOK=369 qFail=0 vol=200 playing=1
+[00:43:04] [AUD] t=95034ms st=3 post=409 muteDrop=0 thrDrop=3 fullDrop=0 pump=2654 qOK=406 qFail=0 vol=200 playing=0
+[00:43:09] [AUD] t=100038ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=2799 qOK=446 qFail=0 vol=200 playing=1
+[00:43:14] [AUD] t=105038ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=2941 qOK=446 qFail=0 vol=200 playing=0
+[00:43:19] [AUD] t=110038ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=3084 qOK=446 qFail=0 vol=200 playing=0
+[00:43:24] [AUD] t=115038ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=3227 qOK=446 qFail=0 vol=200 playing=0
+[00:43:29] [AUD] t=120038ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=3370 qOK=446 qFail=0 vol=200 playing=0
+[00:43:34] [AUD] t=125038ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=3513 qOK=446 qFail=0 vol=200 playing=0
+[00:43:39] [AUD] t=130038ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=3656 qOK=446 qFail=0 vol=200 playing=0
+[00:43:44] [AUD] t=135039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=3799 qOK=446 qFail=0 vol=200 playing=0
+[00:43:49] [AUD] t=140039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=3941 qOK=446 qFail=0 vol=200 playing=0
+[00:43:54] [AUD] t=145039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=4084 qOK=446 qFail=0 vol=200 playing=0
+[00:43:59] [AUD] t=150039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=4227 qOK=446 qFail=0 vol=200 playing=0
+[00:44:04] [AUD] t=155039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=4370 qOK=446 qFail=0 vol=200 playing=0
+[00:44:09] [AUD] t=160039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=4513 qOK=446 qFail=0 vol=200 playing=0
+[00:44:14] [AUD] t=165039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=4656 qOK=446 qFail=0 vol=200 playing=0
+[00:44:19] [AUD] t=170039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=4799 qOK=446 qFail=0 vol=200 playing=0
+[00:44:24] [AUD] t=175039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=4941 qOK=446 qFail=0 vol=200 playing=0
+[00:44:29] [AUD] t=180039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=5084 qOK=446 qFail=0 vol=200 playing=0
+[00:44:33] [AUD] t=185039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=5227 qOK=446 qFail=0 vol=200 playing=0
+[00:44:38] [AUD] t=190039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=5370 qOK=446 qFail=0 vol=200 playing=0
+[00:44:43] [AUD] t=195039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=5513 qOK=446 qFail=0 vol=200 playing=0
+[00:44:48] [AUD] t=200039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=5656 qOK=446 qFail=0 vol=200 playing=0
+[00:44:53] [AUD] t=205039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=5799 qOK=446 qFail=0 vol=200 playing=0
+[00:44:58] [AUD] t=210039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=5941 qOK=446 qFail=0 vol=200 playing=0
+[00:45:03] [AUD] t=215039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=6084 qOK=446 qFail=0 vol=200 playing=0
+[00:45:08] [AUD] t=220039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=6227 qOK=446 qFail=0 vol=200 playing=0
+[00:45:13] [AUD] t=225039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=6370 qOK=446 qFail=0 vol=200 playing=0
+[00:45:18] [AUD] t=230039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=6513 qOK=446 qFail=0 vol=200 playing=0
+[00:45:23] [AUD] t=235039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=6656 qOK=446 qFail=0 vol=200 playing=0
+[00:45:28] [AUD] t=240039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=6799 qOK=446 qFail=0 vol=200 playing=0
+[00:45:33] [AUD] t=245039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=6941 qOK=446 qFail=0 vol=200 playing=0
+[00:45:38] [AUD] t=250039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=7084 qOK=446 qFail=0 vol=200 playing=0
+[00:45:43] [AUD] t=255039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=7227 qOK=446 qFail=0 vol=200 playing=0
+[00:45:48] [AUD] t=260039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=7370 qOK=446 qFail=0 vol=200 playing=0
+[00:45:53] [AUD] t=265039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=7513 qOK=446 qFail=0 vol=200 playing=0
+[00:45:58] [AUD] t=270039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=7656 qOK=446 qFail=0 vol=200 playing=0
+[00:46:03] [AUD] t=275039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=7799 qOK=446 qFail=0 vol=200 playing=0
+[00:46:08] [AUD] t=280039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=7941 qOK=446 qFail=0 vol=200 playing=0
+[00:46:13] [AUD] t=285039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=8084 qOK=446 qFail=0 vol=200 playing=0
+[00:46:18] [AUD] t=290039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=8227 qOK=446 qFail=0 vol=200 playing=0
+[00:46:23] [AUD] t=295039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=8370 qOK=446 qFail=0 vol=200 playing=0
+[00:46:28] [AUD] t=300039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=8513 qOK=446 qFail=0 vol=200 playing=0
+[00:46:33] [AUD] t=305039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=8656 qOK=446 qFail=0 vol=200 playing=0
+[00:46:38] [AUD] t=310039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=8799 qOK=446 qFail=0 vol=200 playing=0
+[00:46:43] [AUD] t=315039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=8941 qOK=446 qFail=0 vol=200 playing=0
+[00:46:48] [AUD] t=320039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=9084 qOK=446 qFail=0 vol=200 playing=0
+[00:46:53] [AUD] t=325039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=9227 qOK=446 qFail=0 vol=200 playing=0
+[00:46:58] [AUD] t=330039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=9370 qOK=446 qFail=0 vol=200 playing=0
+[00:47:03] [AUD] t=335039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=9513 qOK=446 qFail=0 vol=200 playing=0
+[00:47:08] [AUD] t=340039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=9656 qOK=446 qFail=0 vol=200 playing=0
+[00:47:13] [AUD] t=345039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=9799 qOK=446 qFail=0 vol=200 playing=0
+[00:47:18] [AUD] t=350039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=9941 qOK=446 qFail=0 vol=200 playing=0
+[00:47:24] [AUD] t=355039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=10084 qOK=446 qFail=0 vol=200 playing=0
+[00:47:29] [AUD] t=360039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=10227 qOK=446 qFail=0 vol=200 playing=0
+[00:47:34] [AUD] t=365039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=10370 qOK=446 qFail=0 vol=200 playing=0
+[00:47:39] [AUD] t=370039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=10513 qOK=446 qFail=0 vol=200 playing=0
+[00:47:44] [AUD] t=375039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=10656 qOK=446 qFail=0 vol=200 playing=0
+[00:47:49] [AUD] t=380039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=10799 qOK=446 qFail=0 vol=200 playing=0
+[00:47:54] [AUD] t=385039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=10941 qOK=446 qFail=0 vol=200 playing=0
+[00:47:59] [AUD] t=390039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=11084 qOK=446 qFail=0 vol=200 playing=0
+[00:48:04] [AUD] t=395039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=11227 qOK=446 qFail=0 vol=200 playing=0
+[00:48:09] [AUD] t=400039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=11370 qOK=446 qFail=0 vol=200 playing=0
+[00:48:14] [AUD] t=405039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=11513 qOK=446 qFail=0 vol=200 playing=0
+[00:48:19] [AUD] t=410039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=11656 qOK=446 qFail=0 vol=200 playing=0
+[00:48:24] [AUD] t=415039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=11799 qOK=446 qFail=0 vol=200 playing=0
+[00:48:29] [AUD] t=420039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=11941 qOK=446 qFail=0 vol=200 playing=0
+[00:48:34] [AUD] t=425039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=12084 qOK=446 qFail=0 vol=200 playing=0
+[00:48:39] [AUD] t=430039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=12227 qOK=446 qFail=0 vol=200 playing=0
+[00:48:44] [AUD] t=435039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=12370 qOK=446 qFail=0 vol=200 playing=0
+[00:48:49] [AUD] t=440039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=12513 qOK=446 qFail=0 vol=200 playing=0
+[00:48:54] [AUD] t=445039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=12656 qOK=446 qFail=0 vol=200 playing=0
+[00:48:59] [AUD] t=450039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=12799 qOK=446 qFail=0 vol=200 playing=0
+[00:49:04] [AUD] t=455039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=12941 qOK=446 qFail=0 vol=200 playing=0
+[00:49:09] [AUD] t=460039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=13084 qOK=446 qFail=0 vol=200 playing=0
+[00:49:14] [AUD] t=465039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=13227 qOK=446 qFail=0 vol=200 playing=0
+[00:49:18] [AUD] t=470039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=13370 qOK=446 qFail=0 vol=200 playing=0
+[00:49:23] [AUD] t=475039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=13513 qOK=446 qFail=0 vol=200 playing=0
+[00:49:28] [AUD] t=480039ms st=5 post=449 muteDrop=0 thrDrop=3 fullDrop=0 pump=13656 qOK=446 qFail=0 vol=200 playing=0
+=== end 00:49:28  gaps=0  panic_lines=0 ===

@@ -1,0 +1,76 @@
+=== serial log start 00:21:28 port=/dev/cu.usbmodem1101 dur=480s ===
+port up after 0s
+[00:21:29] ESP-ROM:esp32p4-eco2-20240710
+[00:21:29] Build:Jul 10 2024
+[00:21:29] rst:0x17 (CHIP_USB_UART_RESET),boot:0x20c (SPI_FAST_FLASH_BOOT)
+[00:21:29] Core0 Saved PC:0x4ff03a6a
+[00:21:29] Core1 Saved PC:0x4fc10a8e
+[00:21:29] SPI mode:DIO, clock div:1
+[00:21:29] load:0x4ff33ce0,len:0x11dc
+[00:21:29] load:0x4ff29ed0,len:0xcc0
+[00:21:29] load:0x4ff2cbd0,len:0x3348
+[00:21:29] entry 0x4ff29ed0
+[00:21:30] === PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===
+[00:21:30] unlock=0001 cleared=0000 levels=20 lang=EN endbest=0
+[00:21:30] tap language = switch EN/中文 | tap = start
+[00:21:40] . (silent 10s)
+[00:21:50] . (silent 10s)
+[00:22:00] . (silent 10s)
+[00:22:10] . (silent 10s)
+[00:22:20] . (silent 10s)
+[00:22:30] . (silent 10s)
+[00:22:40] . (silent 10s)
+[00:22:50] . (silent 10s)
+[00:23:00] . (silent 10s)
+[00:23:10] . (silent 10s)
+[00:23:21] . (silent 10s)
+[00:23:31] . (silent 10s)
+[00:23:41] . (silent 10s)
+[00:23:51] . (silent 10s)
+[00:24:01] . (silent 10s)
+[00:24:11] . (silent 10s)
+[00:24:21] . (silent 10s)
+[00:24:31] . (silent 10s)
+[00:24:41] . (silent 10s)
+[00:24:51] . (silent 10s)
+[00:25:01] . (silent 10s)
+[00:25:11] . (silent 10s)
+[00:25:21] . (silent 10s)
+[00:25:31] . (silent 10s)
+[00:25:41] . (silent 10s)
+[00:25:51] . (silent 10s)
+[00:26:01] . (silent 10s)
+[00:26:11] . (silent 10s)
+[00:26:21] . (silent 10s)
+[00:26:31] . (silent 10s)
+[00:26:41] . (silent 10s)
+[00:26:51] . (silent 10s)
+[00:27:01] . (silent 10s)
+[00:27:07] !READ ERROR: read failed: [Errno 6] Device not configured (gap #1)
+[00:27:10] ESP-ROM:esp32p4-eco2-20240710
+[00:27:10] Build:Jul 10 2024
+[00:27:10] rst:0x17 (CHIP_USB_UART_RESET),boot:0x20c (SPI_FAST_FLASH_BOOT)
+[00:27:10] Core0 Saved PC:0x4ff03a6a
+[00:27:10] Core1 Saved PC:0x4ff03a6a
+[00:27:10] SPI mode:DIO, clock div:1
+[00:27:10] load:0x4ff33ce0,len:0x11dc
+[00:27:10] load:0x4ff29ed0,len:0xcc0
+[00:27:10] load:0x4ff2cbd0,len:0x3348
+[00:27:10] entry 0x4ff29ed0
+[00:27:11] === PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===
+[00:27:11] unlock=0001 cleared=0000 levels=20 lang=EN endbest=0
+[00:27:11] tap language = switch EN/中文 | tap = start
+[00:27:21] . (silent 10s)
+[00:27:31] . (silent 10s)
+[00:27:41] . (silent 10s)
+[00:27:51] . (silent 10s)
+[00:28:01] . (silent 10s)
+[00:28:11] . (silent 10s)
+[00:28:21] . (silent 10s)
+[00:28:31] . (silent 10s)
+[00:28:41] . (silent 10s)
+[00:28:51] . (silent 10s)
+[00:29:02] . (silent 10s)
+[00:29:12] . (silent 10s)
+[00:29:22] . (silent 10s)
+=== end 00:29:29  gaps=1  panic_lines=0 ===
