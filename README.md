@@ -32,10 +32,10 @@ build it, and nothing gets downloaded except the toolchain.
 | Display | 1280×720 MIPI-DSI, 40 px cells, 32×14 grid |
 | Input | Touch only (no physical buttons on this device) |
 | Levels | 20 (+ endless engine, UI not wired yet — see *Status*) |
-| Towers | 5 types, 3 levels each (+25% range, ×1.5 damage per level) |
+| Towers | 5 types, 3 levels each (+12% range, ×1.3 damage per level) |
 | Enemies | 9 kinds, incl. air (flies straight to your base) and healers |
 | Bosses | 8 abilities; up to two bosses per level, mid-bosses too |
-| RAM / Flash | 35,472 B (6.9%) / 819,150 B (26.0%) of a v0.4.0 build |
+| RAM / Flash | 37,016 B (7.2%) / 819,586 B (26.1%) of a v0.4.1 build |
 
 ## Screenshots
 
@@ -168,17 +168,21 @@ the rest are recorded for information.
 
 | Check | Result |
 |---|---|
-| `./sim/sim` (20 levels + map data) | **165 checks passed, 0 failed** |
+| `./sim/sim` (20 levels + map data) | **178 checks passed, 0 failed** |
 | Gated levels cleared by the bot | L1–L4 and L11–L13, incl. L13 with 20/20 lives, 318 kills |
 | Coverage audit, all 20 maps (`tools/map_design.py`) | All PASS: minimum towers 5→18 ≤ 20, no dead path cells, three viable build orders |
-| `pio run -e tab5` (v0.4.0) | SUCCESS — RAM 35,472 B (6.9 %), Flash 819,150 B (26.0 %) |
-| Merged image flashed and read back from the device | byte-identical (sha256 match, 863,280 B) |
+| `pio run -e tab5` (v0.4.1) | SUCCESS — RAM 37,016 B (7.2 %), Flash 819,586 B (26.1 %) |
+| Merged image (929,360 B) | built with `esptool merge_bin`; boot/partition/app headers verified identical to the v0.4.0 layout (offsets 0x2000 / 0x8000 / 0xe000 / 0x10000) |
+| Device flash + readback | **pending hardware** — structure verified offline only (see `docs/FIXLOG-v0.4.1.md` §6) |
 
 Bugs found and locked in by the simulator (now regression assertions): `int8_t`
 projectile speed truncation, coordinates not written back, target selection
 preferring far targets over the one under the gun, and a test bot that upgraded a
 single tower and faked a healthy economy. The v0.4 work also caught a `uint16_t`
-unlock bitmap that would have permanently locked level 17.
+unlock bitmap that would have permanently locked level 17. v0.4.1 caught the
+same species of bug in the NVS save-dedup cache (a `uint16_t` cache against a
+`uint32_t` bitmap, writing flash every frame on the level-clear screen) — now
+covered by assertions in `sim/run.cpp` §15.
 
 ## Repository layout
 

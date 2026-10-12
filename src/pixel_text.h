@@ -8,6 +8,8 @@
 #include "pixel_font.h"
 
 // scale=2 → 10x14 px；scale=3 → 15x21 px。Tab5 是 720p，字要放大才够远看清
+// v0.4.1：行内连续置位合并成一次 fillRect（RLE）——输出像素与逐列画完全
+// 一致，但 HUD/面板大量文字的场景 fillRect 调用数降约 2/3。
 static inline void px_char(M5GFX* g, int x, int y, char ch, uint16_t c, int scale) {
   const uint8_t* rows;
   if (ch == '\x01')      rows = FONT_HEART;   // ♥
@@ -16,11 +18,14 @@ static inline void px_char(M5GFX* g, int x, int y, char ch, uint16_t c, int scal
   else rows = FONT5x7[ch - FONT_FIRST];
 
   for (int r = 0; r < FONT_H; ++r) {
-    uint8_t bits = rows[r];
-    for (int col = 0; col < FONT_W; ++col) {
-      if (bits & (1 << (FONT_W - 1 - col))) {
-        g->fillRect(x + col * scale, y + r * scale, scale, scale, c);
-      }
+    const uint8_t bits = rows[r];
+    int col = 0;
+    while (col < FONT_W) {
+      if (!(bits & (1 << (FONT_W - 1 - col)))) { ++col; continue; }   // 空列跳过
+      int run = 0;                                                       // 连续实列合并
+      while (col + run < FONT_W && (bits & (1 << (FONT_W - 1 - col - run)))) ++run;
+      g->fillRect(x + col * scale, y + r * scale, run * scale, scale, c);
+      col += run;
     }
   }
 }

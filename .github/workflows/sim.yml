@@ -1,0 +1,35 @@
+name: sim
+
+# 门禁：PC 仿真（编译真固件源码）+ 三个生成物的漂移检查。
+# 仿真是本项目唯一的自动化测试（真机不便接入 CI），任何 PR 不得让它变红。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PC simulator — real firmware sources, all assertions
+        run: |
+          g++ -std=c++17 -O2 -I sim/compat -I src sim/run.cpp -o sim/sim
+          ./sim/sim
+
+      # 单一真源纪律：改生成器必须重新生成，且生成结果必须入库
+      - name: config_gen.h must match tools/layout.py
+        run: |
+          python3 tools/layout.py
+          git diff --exit-code src/config_gen.h
+
+      - name: pixel_font.h must match tools/gen_font.py
+        run: |
+          python3 tools/gen_font.py
+          git diff --exit-code src/pixel_font.h
+
+      - name: sfx_data.h must match tools/gen_sfx.py
+        run: |
+          python3 tools/gen_sfx.py
+          git diff --exit-code src/sfx_data.h

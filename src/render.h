@@ -157,27 +157,30 @@ static void drawBuildBar(M5GFX* g) {
 }
 
 // ── HUD 数字（只在数值变化时调用）────────────────────────────────
+// v0.4.1：三个擦除框一律按"最长可能内容"配宽并留余量——
+//   HP 两位数字宽 36px 但旧框只有 35px：生命 10→9 时旧数字右缘 6px
+//   擦不掉，留一道旧 '0' 残边（v0.4.1 修）。
+//   GOLD 按 7 位配（无尽模式金币会超 5 位）；WAVE 按 "250/250"（7 字）
+//   配并把文本左移，右缘仍必须 < BTN_X——伸进 NEXT WAVE 按钮区会重演
+//   v0.2.1 真机 bug #3（按钮左缘被刷成黑底）。
 static void drawHud(M5GFX* g) {
   char buf[16];
 
   // HP：数字前留心跳图标位（x=200）
-  g->fillRect(196, 14, 5 * 3 + 20, FONT_H * 3 + 6, C_UI_BG);
+  g->fillRect(196, 14, 64, FONT_H * 3 + 6, C_UI_BG);
   px_itoa(g_w.lives, buf);
   px_text(g, 204, 20, buf, g_w.lives <= 5 ? C_HP_LOW : C_TEXT, 3);
 
   // GOLD
-  g->fillRect(492, 14, (FONT_W + 1) * 3 * 5 + 8, FONT_H * 3 + 6, C_UI_BG);
+  g->fillRect(492, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
   px_itoa(g_w.gold, buf);
   px_text(g, 500, 20, buf, C_GOLD, 3);
 
-  // WAVE x/N（本关总波数一目了然）
-  // ⚠️ v0.2.1：底板宽度按最长内容 "15/15"(5字) 收，右缘必须 < BTN_X——
-  //   旧宽 *8+8=152 → 956..1108，每次 hudDirty 都把 NEXT WAVE 按钮左缘
-  //   (1064+) 刷成黑底，而按钮只在 enabled 状态翻转时重画 → 黑块残留。
-  g->fillRect(956, 14, (FONT_W + 1) * 3 * 5 + 8, FONT_H * 3 + 6, C_UI_BG);
+  // WAVE x/N（本关总波数一目了然；无尽模式总波数走 lvWaves()=250）
+  g->fillRect(896, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
   char wbuf[24]; px_itoa(g_w.wave, wbuf);
-  strcat(wbuf, "/"); char tbuf[8]; px_itoa(LV().waves, tbuf); strcat(wbuf, tbuf);
-  px_text(g, 964, 20, wbuf, C_TEXT, 3);
+  strcat(wbuf, "/"); char tbuf[8]; px_itoa(lvWaves(), tbuf); strcat(wbuf, tbuf);
+  px_text(g, 900, 20, wbuf, C_TEXT, 3);
 }
 
 // ── NEXT WAVE 按钮（v0.2.1：波间变倒计时条）───────────────────────
@@ -682,10 +685,12 @@ static void flashCell(M5GFX* g, int col, int row, bool ok) {
 }
 
 // ── Game Over：盖一层半透明感的深色块 + 大字，点击任意处重开 ──────
+// v0.4.1：压暗点阵从 2x2@4px 步进（57,600 次 fillRect，约百毫秒卡顿）
+// 改 4x4@8px 步进（14,400 次）——25% 覆盖率不变，像素风下肉眼无差。
 static void drawGameOver(M5GFX* g) {
   // 用稀疏暗块模拟半透明压暗（无 alpha，保持纯矩形）
-  for (int y = MAP_TOP; y < SCREEN_H; y += 4)
-    for (int x = 0; x < SCREEN_W; x += 4) g->fillRect(x, y, 2, 2, C_BG);
+  for (int y = MAP_TOP; y < SCREEN_H; y += 8)
+    for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
 
   const int bw = 760, bh = 300;
   const int bx = (SCREEN_W - bw) / 2, by = MAP_TOP + (SCREEN_H - MAP_TOP - bh) / 2;
@@ -753,44 +758,47 @@ static void drawMuteBtn(M5GFX* g) {
   }
 }
 
+// ── 单个选关节点（v0.4.1 从 drawLevelSelect 抽出，供锁关反馈自擦复用）──
+static void drawSelNode(M5GFX* g, int i) {
+  const int x = selNodeX(i), y = selNodeY(i);
+  const bool unlocked = levelUnlocked(i);
+  const bool cleared  = levelCleared(i);        // v0.2.0：通关位图真源 game.h
+  const bool cur = unlocked && !cleared;
+
+  uint16_t bgc  = unlocked ? C_SLOT_BG : (int)C_LOCK;
+  uint16_t bord = cleared ? C_GOLD : cur ? C_HP_FULL : C_LOCK;
+
+  g->fillRect(x, y, SEL_NODE_W, SEL_NODE_H, bgc);
+  g->drawRect(x, y, SEL_NODE_W, SEL_NODE_H, bord);
+  if (cur) g->drawRect(x + 3, y + 3, SEL_NODE_W - 6, SEL_NODE_H - 6, C_HP_FULL);
+
+  char buf[8]; px_itoa(i + 1, buf);
+  if (unlocked) {
+    // v0.4：5×4=20 节点（170×110），字号/间距按新节点收窄
+    px_textCenter(g, x + SEL_NODE_W / 2, y + 14, buf, C_TEXT, 4);
+    px_textCenter(g, x + SEL_NODE_W / 2, y + 62, LEVELS[i].name,
+                  cleared ? C_GOLD : C_TEXT_DIM, 1);
+    // v0.3.0：星级取代 "CLEAR"（未通关=三颗空星，收集进度可视化）
+    drawStarRow(g, x + SEL_NODE_W / 2, y + 82, 3, cleared ? g_stars[i] : 0, 7);
+  } else {
+    // 锁图标：方块+横梁，纯矩形
+    const int lx = x + SEL_NODE_W / 2 - 18, ly = y + SEL_NODE_H / 2 - 10;
+    g->fillRect(lx, ly + 8, 36, 26, C_TEXT_DIM);
+    g->fillRect(lx + 8, ly - 6, 20, 14, C_LOCK);
+    g->fillRect(lx + 12, ly - 2, 12, 10, C_BG);
+    g->fillRect(lx + 16, ly + 14, 4, 12, C_BG);
+  }
+
+  // BOSS 预告点：通关玩家知道每关有王（小方块提示）
+  if (unlocked) g->fillRect(x + SEL_NODE_W - 14, y + 8, 6, 6, C_ENEMY_BOSS);
+}
+
 // ── 关卡选择（v0.2.0）：5×2 节点图，锁定=灰+锁，通关=金，当前=绿框 ─
 static void drawLevelSelect(M5GFX* g) {
   g->fillScreen(C_BG);
   px_textCenter(g, SCREEN_W / 2, 36, "SELECT LEVEL", C_TEXT, 4);
 
-  for (int i = 0; i < LEVEL_COUNT; ++i) {
-    const int x = selNodeX(i), y = selNodeY(i);
-    const bool unlocked = levelUnlocked(i);
-    const bool cleared  = levelCleared(i);        // v0.2.0：通关位图真源 game.h
-    const bool cur = unlocked && !cleared;
-
-    uint16_t bgc  = unlocked ? C_SLOT_BG : (int)C_LOCK;
-    uint16_t bord = cleared ? C_GOLD : cur ? C_HP_FULL : C_LOCK;
-
-    g->fillRect(x, y, SEL_NODE_W, SEL_NODE_H, bgc);
-    g->drawRect(x, y, SEL_NODE_W, SEL_NODE_H, bord);
-    if (cur) g->drawRect(x + 3, y + 3, SEL_NODE_W - 6, SEL_NODE_H - 6, C_HP_FULL);
-
-    char buf[8]; px_itoa(i + 1, buf);
-    if (unlocked) {
-      // v0.4：5×4=20 节点（170×110），字号/间距按新节点收窄
-      px_textCenter(g, x + SEL_NODE_W / 2, y + 14, buf, C_TEXT, 4);
-      px_textCenter(g, x + SEL_NODE_W / 2, y + 62, LEVELS[i].name,
-                    cleared ? C_GOLD : C_TEXT_DIM, 1);
-      // v0.3.0：星级取代 "CLEAR"（未通关=三颗空星，收集进度可视化）
-      drawStarRow(g, x + SEL_NODE_W / 2, y + 82, 3, cleared ? g_stars[i] : 0, 7);
-    } else {
-      // 锁图标：方块+横梁，纯矩形
-      const int lx = x + SEL_NODE_W / 2 - 18, ly = y + SEL_NODE_H / 2 - 10;
-      g->fillRect(lx, ly + 8, 36, 26, C_TEXT_DIM);
-      g->fillRect(lx + 8, ly - 6, 20, 14, C_LOCK);
-      g->fillRect(lx + 12, ly - 2, 12, 10, C_BG);
-      g->fillRect(lx + 16, ly + 14, 4, 12, C_BG);
-    }
-
-    // BOSS 预告点：通关玩家知道每关有王（小方块提示）
-    if (unlocked) g->fillRect(x + SEL_NODE_W - 14, y + 8, 6, 6, C_ENEMY_BOSS);
-  }
+  for (int i = 0; i < LEVEL_COUNT; ++i) drawSelNode(g, i);
 
   px_textCenter(g, SCREEN_W / 2, selNodeY(LEVEL_COUNT - 1) + SEL_NODE_H + 16,
                 "CLEAR A LEVEL TO UNLOCK THE NEXT", C_TEXT_DIM, 2);
@@ -801,8 +809,8 @@ static void drawLevelSelect(M5GFX* g) {
 
 // ── 通关画面（v0.2.0）：金色战报，点击回选关 ─────────────────────
 static void drawLevelClear(M5GFX* g) {
-  for (int y = MAP_TOP; y < SCREEN_H; y += 4)
-    for (int x = 0; x < SCREEN_W; x += 4) g->fillRect(x, y, 2, 2, C_BG);
+  for (int y = MAP_TOP; y < SCREEN_H; y += 8)
+    for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
 
   const int bw = 760, bh = 320;
   const int bx = (SCREEN_W - bw) / 2, by = MAP_TOP + (SCREEN_H - MAP_TOP - bh) / 2;

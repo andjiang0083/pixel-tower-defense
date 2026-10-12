@@ -4,6 +4,42 @@ Versions are small patch bumps on purpose: features are merged into a tiny
 version number instead of 1.x.0 jumps. Entries describe what a player can feel,
 not internal refactors.
 
+## v0.4.1 — the fixes you feel only after an hour of play
+
+A full code review of the v0.4.0 tree, with every finding either fixed or
+covered by a regression assertion. Details in `docs/FIXLOG-v0.4.1.md`.
+
+Player-visible:
+- **Bosses now keep their own schedules.** In v0.4.0 every active boss ability
+  fired on the same tick and the cadence was whatever the last one in the chain
+  said — e.g. the L6 boss healed every 7 s instead of 2 s, and the final boss
+  fired all five abilities at once every 9 s. Each ability now runs on its own
+  timer (mini bosses keep their slowed-down ×2 cadence).
+- **Star ratings stick.** Replaying a level for a better star rating used to be
+  lost silently if the unlock/clear bitmaps had not changed. Stars are now part
+  of the save-dedup signature.
+- **The level-clear screen no longer writes flash every frame.** On levels
+  17–20 the NVS dedup cache was 16-bit against a 32-bit bitmap, so the game
+  saved progress 30 times a second while the victory panel was up.
+- **No more digit smudge next to your HP.** When lives dropped from two digits
+  to one (10 → 9) the old number's right edge stayed on screen: the HP erase
+  box was 6 px too narrow.
+- **Tapping a locked level** flashes the red cross for 20 frames and cleans up
+  after itself, instead of leaving the mark on the screen.
+- Game-over / level-clear dimming is a bit cheaper to paint (same look, a
+  quarter of the fill calls) — less of a hitch the moment you win or lose.
+
+Under the hood:
+- New `src/progress.h`: all "when to write NVS" logic in one testable place;
+  the PC simulator now asserts the clear screen saves exactly once.
+- Per-ability boss timers (`Enemy.abNextMs[8]`), staggered on spawn so bosses
+  no longer open with a simultaneous volley.
+- `waveSize()` helper (the wave-count formula existed twice and could drift).
+- CI (`.github/workflows/sim.yml`): simulator + generator drift checks on every
+  push/PR — the repo's test gate was previously manual-only.
+- Renderer: run-length merged pixel-font drawing; HUD erase boxes sized for
+  their longest possible content (incl. endless-mode 6-digit gold).
+
 ## v0.4.0 — 20 levels, and difficulty that comes from space
 
 - **10 new maps (L11–L20)** designed around coverage budget instead of bigger numbers

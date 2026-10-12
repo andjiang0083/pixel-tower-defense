@@ -78,7 +78,8 @@ SHIELD_FROM_WAVE = 5                                 # v0.4：6→5——压力�
 HEAL_PCT, HEAL_MS            = 12, 1600    # HEALER：r=90 内友军 +maxHp%
 BOSS_HEAL_PCT, BOSS_HEAL_MS  = 6, 2000    # BOSS 自愈：v0.3.2 8→6——
                                           # 8% 在 diff≥1.6 的终波=3 王互 heal 393 DPS 死锁（bot 全灭）
-BOSS_HEAL_R                  = 420          # r=6格：BOSS 压轴慢行，光环要够长才罩得住进出它的兵潮
+# v0.4.1：BOSS_HEAL_R（420，光环半径）已删——治疗改自愈后它是死宏，
+#          曾误导"光环还在"的错觉。历史：r=420 光环奶全场 → L6 互续航打不完。
 BOSS_BROOD_MS, BOSS_BROOD_SIZE = 4000, 3   # BOSS 产卵：吐 SWARM
 ELITE_HP_MULT, ELITE_GOLD_ADD = 1.75, 8    # ELITE 金皮旗标（×2.5→×1.75：仿真 L7 wave8 火力墙死局）
 
@@ -96,6 +97,7 @@ GHOST_MS, GHOST_DUR_MS = 7000, 1500                        # 🌫 每7s隐身1.5
 # mid-boss：一关多王——半程波出缩小版王（hp×0.45 size-8 gold×0.6）
 MID_HP_PCT, MID_GOLD_PCT, MID_SIZE_DROP = 45, 60, 8
 # ── v0.4 无尽模式（L10 CLEAR → TERMINAL 图无限刷）─────────────────
+ENDLESS_WAVES      = 250          # 无尽总波数上限（v0.4.1 立为常量：game.h lvWaves 曾硬编码 250）
 ENDLESS_DIFF_PCT   = 6             # 每轮(10波) diff ×(1+6%)
 ENDLESS_ROUND_WAVES = 10           # 一轮=10波；每轮末波出真BOSS
 ENDLESS_MINI_EVERY = 5             # 每5波一个mini-boss
@@ -476,7 +478,7 @@ def gen_header():
         fsp=FROST_SLOW_PCT, fsm=FROST_SLOW_MS, kinds=kinds_c,
         ksw=K_SWARM, kar=K_ARMOR, kbo=K_BOSS, khe=K_HEAL,
         sb=SWARM_BURST, afw=ARMOR_FROM_WAVE,
-        hpct=HEAL_PCT, hms=HEAL_MS, bhp=BOSS_HEAL_PCT, bhms=BOSS_HEAL_MS, bhr=BOSS_HEAL_R,
+        hpct=HEAL_PCT, hms=HEAL_MS, bhp=BOSS_HEAL_PCT, bhms=BOSS_HEAL_MS,
         bbm=BOSS_BROOD_MS, bbs=BOSS_BROOD_SIZE,
         ehm=ELITE_HP_MULT, ega=ELITE_GOLD_ADD, abh=AB_HEAL, abb=AB_BROOD,
         abs_=AB_SPLIT, abh2=AB_HORN, abe=AB_EMP, abg=AB_GREED,
@@ -488,6 +490,7 @@ def gen_header():
         gms=GHOST_MS, gdms=GHOST_DUR_MS,
         midh=MID_HP_PCT, midg=MID_GOLD_PCT, mids=MID_SIZE_DROP,
         edp=ENDLESS_DIFF_PCT, erw=ENDLESS_ROUND_WAVES, eme=ENDLESS_MINI_EVERY,
+        enw=ENDLESS_WAVES,
         air=air_c, lbm=LASER_BEAM_MS, s3=STAR3_PCT, s2=STAR2_PCT,
         kch=K_CHOPPER, afwv=AIR_FROM_WAVE,
         ksh=K_SHIELD, shw=SHIELD_FROM_WAVE,
@@ -608,7 +611,6 @@ static const uint8_t TOWER_AIR_OK[TT_COUNT] = { %(air)s };
 #define HEAL_MS         %(hms)d
 #define BOSS_HEAL_PCT   %(bhp)d      // boss heal aura +%%%%maxHp
 #define BOSS_HEAL_MS    %(bhms)d
-#define BOSS_HEAL_R     %(bhr)d      // boss heal aura radius px (6 cells)
 #define BOSS_BROOD_MS   %(bbm)d      // boss spawns SWARM every ms
 #define BOSS_BROOD_SIZE %(bbs)d
 #define ELITE_HP_MULT   %(ehm).1ff
@@ -643,6 +645,7 @@ static const uint8_t TOWER_AIR_OK[TT_COUNT] = { %(air)s };
 #define MID_GOLD_PCT    %(midg)d    // gold ×%%
 #define MID_SIZE_DROP   %(mids)d    // size -px
 // endless（L10 CLEAR 后 TERMINAL 无限刷）
+#define ENDLESS_WAVES      %(enw)d  // total waves cap in endless (lvWaves)
 #define ENDLESS_DIFF_PCT   %(edp)d  // diff ×(1+%%) per round
 #define ENDLESS_ROUND_WAVES %(erw)d // one round = N waves; boss on last
 #define ENDLESS_MINI_EVERY  %(eme)d // mini-boss cadence

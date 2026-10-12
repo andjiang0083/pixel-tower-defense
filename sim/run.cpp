@@ -21,6 +21,8 @@
 #include <math.h>
 
 static int g_fail = 0, g_pass = 0;
+static int s_simSaves = 0;                       // v0.4.1：进度落盘计数器（见测试 15）
+static void simCountSave(void) { ++s_simSaves; }
 #define CHECK(cond, ...) do { if (cond) ++g_pass; else { ++g_fail; \
   printf("  FAIL: "); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
@@ -54,6 +56,9 @@ static void tick(int frames) {
     g_simMs += 33;
     Tap t = readTap();                 // 真 touch.h：只有抬指那一帧 valid
     if (t.valid) handleTap(D, t);
+    // v0.4.1：镜像 main.cpp 选关分支——只推进输入/反馈，不跑世界也不渲染
+    // （旧仿真在 ST_SEL 也跑 renderFrame，会把 HUD 画到选关屏幕上，与真机不符）
+    if (g_w.state == ST_SEL) { updateSelFx(D); continue; }
     gameUpdate(33);                    // 真逻辑（面板打开=内部暂停）
     s_nowMs = g_simMs;                // v0.3.1：镜像 loop()——音效节流时钟
     sfxPump();                        // 仿真下排空队列（同份投递/节流代码）
@@ -270,7 +275,7 @@ int main(void) {
     shotMode(lv, wv ? atoi(wv) : 0, out ? out : "shot.ppm");
     return 0;
   }
-  printf("=== PC sim v0.4.0: 20 levels (L11-20 new maps), real game/render/touch/actions ===\n");
+  printf("=== PC sim v0.4.1: 20 levels (L11-20 new maps), real game/render/touch/actions ===\n");
   printf("grid %dx%d cell=%d | caps e/t/b/fx = %d/%d/%d/%d\n",
          COLS, MAP_ROWS, CELL, MAX_ENEMIES, MAX_TOWERS, MAX_BULLETS, MAX_FX);
 
@@ -333,7 +338,7 @@ int main(void) {
 
     // 关键视觉快照：L5 双路战斗 / L6 BOSS(治疗) / L10 终王
     if (lv == 4 || lv == 5 || lv == 9 || lv == 19) {
-      char p[64]; sprintf(p, "sim_lv%02d.ppm", lv + 1);
+      char p[64]; snprintf(p, sizeof(p), "sim_lv%02d.ppm", lv + 1);
       dumpPpm(p);
     }
 
@@ -342,6 +347,7 @@ int main(void) {
   }
 
   // ── 3. BOSS 技能单元测：HEAL / BROOD（L6/L10）──────────────────
+  // v0.4.1：逼技能到期要同时置 abilityMs（门控）和 abNextMs[8]（各技能位表）
   {
     levelLoad(5);                       // L6 FROST LORD: AB_HEAL（自愈）
     g_w.gold = 9999; g_w.lives = 99999; startNextWave(); g_w.wave = LV().waves;
@@ -352,7 +358,8 @@ int main(void) {
     CHECK(bossIdx>=0, "L6 boss not spawned");
     if (bossIdx>=0) {
       g_w.enemies[bossIdx].hp = 1;                     // 打到只剩血皮
-      g_w.enemies[bossIdx].abilityMs = millis();       // 立刻到治疗节拍
+      g_w.enemies[bossIdx].abilityMs = millis();       // 门控立刻到期
+      for (int k=0;k<8;++k) g_w.enemies[bossIdx].abNextMs[k] = millis();  // 各技能位全部逼停
       tick(90);                                          // ≥ HEAL_MS；期间可能挨塔弹，但 +8%maxHp 应净涨
       CHECK(g_w.enemies[bossIdx].active && g_w.enemies[bossIdx].hp > 1.0f,
             "boss self-heal did nothing (hp=%.1f)", g_w.enemies[bossIdx].hp);
@@ -364,7 +371,9 @@ int main(void) {
     int swarmBefore=0; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active && g_w.enemies[i].kind==K_SWARM) ++swarmBefore;
     int boss2=-1; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active && g_w.enemies[i].kind==K_BOSS) boss2=i;
     CHECK(boss2>=0, "L10 boss not spawned");
-    if (boss2>=0) { g_w.enemies[boss2].abilityMs = millis(); tick(6);
+    if (boss2>=0) { g_w.enemies[boss2].abilityMs = millis();
+      for (int k=0;k<8;++k) g_w.enemies[boss2].abNextMs[k] = millis();
+      tick(6);
       int swarmAfter=0; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active && g_w.enemies[i].kind==K_SWARM) ++swarmAfter;
       CHECK(swarmAfter > swarmBefore, "brood did not spawn minions (%d->%d)", swarmBefore, swarmAfter);
     }
@@ -672,6 +681,75 @@ int main(void) {
     CHECK(alive()>=8, "overlap setup: need 8 survivors (got %d)", alive());
     int fr=0; while (g_w.state==ST_WAVE && g_w.wave==5 && fr<300){tick(1);++fr;}
     CHECK(fr>=115 && fr<=185, "overlap force-start off: %d frames (expect ~150)", fr);
+  }
+
+  // ── 15. v0.4.1：进度落盘去重（P0 回归：uint16 截断→每帧写 NVS）────
+  //      + 星级进步也必须落盘（旧去重只看 unlock/clear，重打刷星静默丢失）
+  {
+    for (int i=0;i<LEVEL_COUNT;++i) g_stars[i] = (uint8_t)((i*7+1) % 4);   // 任意星级
+    uint32_t a = packStars(0), b = packStars(10);
+    uint8_t rt[LEVEL_COUNT]; int bad=0;
+    for (int i=0;i<10;++i) rt[i]=(uint8_t)((a>>(i*3))&7);
+    for (int i=10;i<LEVEL_COUNT;++i) rt[i]=(uint8_t)((b>>((i-10)*3))&7);
+    for (int i=0;i<LEVEL_COUNT;++i) if (rt[i]!=g_stars[i]) ++bad;
+    CHECK(bad==0, "packStars roundtrip broken (%d mismatches)", bad);
+
+    levelLoad(16);                       // L17：解锁位在 bit16——旧 uint16 缓存的炸点
+    g_w.gold = 9999; g_w.lives = 99999;
+    g_unlocked |= (1u << 16); g_cleared |= (1u << 16);      // 模拟刚通关 L17
+    g_w.state = ST_CLEAR;
+    s_simSaves = 0; g_saveProgress = simCountSave;
+    for (int i = 0; i < 30; ++i) progressTickOnClear();     // 通关画面停留 30 帧
+    CHECK(s_simSaves == 1, "clear screen saved %d times in 30 frames (expect 1)", s_simSaves);
+    g_stars[16] = 3;                                        // 重打刷高星级
+    progressTickOnClear();
+    CHECK(s_simSaves == 2, "star progress did not trigger save (saves=%d)", s_simSaves);
+    for (int i = 0; i < 10; ++i) progressTickOnClear();     // 无变化→零写入
+    CHECK(s_simSaves == 2, "unchanged progress re-saved (saves=%d)", s_simSaves);
+    g_saveProgress = nullptr;
+  }
+
+  // ── 16. v0.4.1：BOSS 各技能位独立节拍（L6 = HEAL 2s + GHOST 7s）────
+  //      旧实现到期齐放+最后一个 if 常量劫持：治疗被拖成 7s/次
+  {
+    levelLoad(5); g_w.gold = 9999; g_w.lives = 99999;
+    startNextWave(); g_w.wave = LV().waves;
+    g_w.toSpawn = 1; g_w.bossPending = true; tick(30);      // 只出王，无塔干扰
+    int bi=-1; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active && g_w.enemies[i].kind==K_BOSS) bi=i;
+    CHECK(bi>=0, "cadence test: L6 boss missing");
+    if (bi>=0) {
+      Enemy& B = g_w.enemies[bi];
+      B.hp = 1;
+      B.abilityMs = millis();
+      for (int k=0;k<8;++k) B.abNextMs[k] = millis();       // 全部逼停→各自重新排表
+      tick(BOSS_HEAL_MS/33 + 4);                            // ~2s：HEAL 应已自愈
+      CHECK(B.hp > 1.5f, "HEAL did not fire at own 2s cadence (hp=%.1f)", B.hp);
+      CHECK(B.ghostMs == 0, "GHOST fired early (cadence hijack?)");
+      tick((GHOST_MS - BOSS_HEAL_MS)/33 + 4);               // 刚过 7s：GHOST 现身且未衰减完
+      CHECK(B.ghostMs > 0, "GHOST never fired at own 7s cadence");
+    }
+  }
+
+  // ── 17. v0.4.1：选关锁关红叉 20 帧自擦（旧实现画完永留）──────────
+  {
+    g_unlocked = 0x0001; g_cleared = 0;                     // 只解锁 L1
+    g_w.state = ST_SEL; drawLevelSelect(D);
+    const int cx = selNodeX(2) + SEL_NODE_W/2, cy = selNodeY(0) + SEL_NODE_H/2;  // 节点正中心=两红叉对角线交点
+    const uint16_t before = D->fb[cy * SCREEN_W + cx];
+    tapAt(cx, cy);                                          // 点锁定节点
+    CHECK(g_selFx.lifeFrames > 0, "locked tap did not arm selFx");
+    updateSelFx(D);                                         // 画一帧红叉
+    CHECK(D->fb[cy * SCREEN_W + cx] == C_BAD, "locked feedback not red");
+    for (int i = 0; i < 25; ++i) updateSelFx(D);            // 20 帧到期自擦
+    CHECK(g_selFx.lifeFrames == 0, "selFx did not expire");
+    CHECK(D->fb[cy * SCREEN_W + cx] == before, "node not restored after selFx");
+  }
+
+  // ── 18. v0.4.1：波量公式唯一化（waveSize 与旧硬编码逐点一致）─────
+  // 6+(w*3)/2 整数除：w=1→7, 2→9, 3→10, 10→21（与 v0.4 两处硬编码同值）
+  {
+    CHECK(waveSize(1)==7 && waveSize(2)==9 && waveSize(3)==10 && waveSize(10)==21,
+          "waveSize formula drifted");
   }
 
   printf("\n=== RESULT: %d passed, %d failed (level-loop checks=%d) ===\n",

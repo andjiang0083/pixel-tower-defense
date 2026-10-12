@@ -9,18 +9,20 @@
 #include "config_gen.h"
 #include "touch.h"          // Tap / pxToCell / hitButton / hitSlot
 #include "game.h"           // buildTower/upgradeTower/sellTower/startNextWave/levelLoad
+#include "progress.h"       // v0.4.1：g_saveProgress 钩子 + 落盘去重（含仿真断言）
 #include "render.h"         // drawBackground / flashCell / drawGameOver / panel
 
 // 建造反馈：绿闪/红叉，若干帧后自行擦除
 struct BuildFx { int16_t col, row; uint8_t lifeFrames; bool ok; };
 static BuildFx g_buildFx = {-1, -1, 0, false};
 
+// 选关界面锁定反馈（v0.4.1 修：旧实现画完红叉永留，只有整屏重画才擦得掉）
+struct SelFx { int8_t node; uint8_t lifeFrames; };
+static SelFx g_selFx = {-1, 0};
+
 // Game Over 覆盖层只在进入时画一次（每帧压暗全屏太贵）
 static bool g_overDrawn = false;
 static bool g_clearDrawn = false;   // 通关画面同理
-
-// 进度落盘钩子：main.cpp 注入 NVS 写入（仿真里为空实现）
-static void (*g_saveProgress)(void) = nullptr;
 
 // ── 重开/初始化后的强制 UI 全量刷新（renderFrame 的缓存归零）────
 static void refreshAllUI(M5GFX* d) {
@@ -45,6 +47,7 @@ static bool enterLevel(M5GFX* d, int idx) {
   if (idx < 0 || idx >= LEVEL_COUNT || !levelUnlocked(idx)) return false;
   levelLoad(idx);
   g_buildFx = {-1, -1, 0, false};
+  g_selFx = {-1, 0};                 // v0.4.1：选关反馈不跨关残留
   g_overDrawn = false;
   g_clearDrawn = false;
   closeTowerPanel(d);
@@ -61,18 +64,14 @@ static bool handleTap(M5GFX* d, const Tap& t) {
     if (t.x >= MUTE_BTN_X && t.x < MUTE_BTN_X + MUTE_BTN_W &&
         t.y >= MUTE_BTN_Y && t.y < MUTE_BTN_Y + MUTE_BTN_H) {
       sfxSetMuted(!s_muted);                 // v0.3.1：点一下静音/恢复
-      if (g_saveProgress) g_saveProgress(); // 状态立刻落盘（含下方 NVS key）
+      progressSaveNow();                     // 状态立刻落盘（v0.4.1：同步去重缓存）
       drawLevelSelect(d);                    // 整屏重画=按钮状态刷新（静态界面便宜）
       return false;
     }
     int node = hitSelNode(t.x, t.y);
     if (node < 0) return false;
-    if (!levelUnlocked(node)) {          // 锁关反馈：节点内红叉
-      const int nx = selNodeX(node), ny = selNodeY(node);
-      for (int i = 0; i < SEL_NODE_H - 40; i += 10) {
-        d->fillRect(nx + SEL_NODE_W/2 - 30 + i, ny + SEL_NODE_H/2 - 30 + i, 8, 8, C_BAD);
-        d->fillRect(nx + SEL_NODE_W/2 + 30 - i, ny + SEL_NODE_H/2 - 30 + i, 8, 8, C_BAD);
-      }
+    if (!levelUnlocked(node)) {          // 锁关反馈：节点内红叉（v0.4.1：20帧后自擦）
+      g_selFx = { (int8_t)node, 20 };
       return false;
     }
     return enterLevel(d, node);
@@ -80,7 +79,7 @@ static bool handleTap(M5GFX* d, const Tap& t) {
 
   // ── 通关画面：点任意处 → 下一关（末关回选关）──────────────────
   if (g_w.state == ST_CLEAR) {
-    if (g_saveProgress) g_saveProgress();          // 解锁进度落盘
+    progressSaveNow();                       // v0.4.1：确保进度已落盘再跳关
     if (g_lv + 1 < LEVEL_COUNT) return enterLevel(d, g_lv + 1);
     g_w.state = ST_SEL;
     drawLevelSelect(d);
@@ -157,6 +156,21 @@ static void updateBuildFx(M5GFX* d) {
     Tower& tw = g_w.towers[i];
     if (tw.active && tw.col == g_buildFx.col && tw.row == g_buildFx.row)
       drawTower(d, tw);                        // 别把刚建的塔一起擦掉
+  }
+}
+
+// ── 选关锁定反馈：红叉闪 20 帧后重画该节点自擦（v0.4.1 修残留）────
+static void updateSelFx(M5GFX* d) {
+  if (g_selFx.lifeFrames == 0) return;
+  if (--g_selFx.lifeFrames == 0) {             // 收尾：节点原样重画，红叉无痕
+    drawSelNode(d, g_selFx.node);
+    g_selFx.node = -1;
+    return;
+  }
+  const int nx = selNodeX(g_selFx.node), ny = selNodeY(g_selFx.node);
+  for (int i = 0; i < SEL_NODE_H - 40; i += 10) {
+    d->fillRect(nx + SEL_NODE_W/2 - 30 + i, ny + SEL_NODE_H/2 - 30 + i, 8, 8, C_BAD);
+    d->fillRect(nx + SEL_NODE_W/2 + 30 - i, ny + SEL_NODE_H/2 - 30 + i, 8, 8, C_BAD);
   }
 }
 

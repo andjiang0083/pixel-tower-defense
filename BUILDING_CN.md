@@ -24,7 +24,7 @@ cd pixel-tower-defense
 pio run -e tab5
 ```
 
-v0.4.0 的期望输出：
+v0.4.1 的期望输出：
 
 ```
 RAM:   [=         ]   6.9% (used 35472 bytes from 512000 bytes)
@@ -78,9 +78,9 @@ PlatformIO 12+ 已经直接产出这个文件：
 
 ```bash
 cp .pio/build/tab5/firmware.factory.bin \
-   releases/pixel-tower-defense-v0.4.0-tab5-merged.bin
-shasum -a 256 releases/pixel-tower-defense-v0.4.0-tab5-merged.bin \
-  > releases/pixel-tower-defense-v0.4.0-tab5-merged.bin.sha256
+   releases/pixel-tower-defense-v0.4.1-tab5-merged.bin
+shasum -a 256 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin \
+  > releases/pixel-tower-defense-v0.4.1-tab5-merged.bin.sha256
 ```
 
 发布前先验各段位置（这一步就是用来拦"黑屏"的）：
@@ -88,7 +88,7 @@ shasum -a 256 releases/pixel-tower-defense-v0.4.0-tab5-merged.bin \
 ```bash
 python3 - <<'PY'
 import struct, pathlib
-b = pathlib.Path('releases/pixel-tower-defense-v0.4.0-tab5-merged.bin').read_bytes()
+b = pathlib.Path('releases/pixel-tower-defense-v0.4.1-tab5-merged.bin').read_bytes()
 def hdr(off):
     return dict(magic=hex(b[off]), nseg=b[off+1], mode=b[off+2],
                 size_freq=hex(b[off+3]), entry=hex(struct.unpack_from('<I', b, off+4)[0]))
@@ -100,19 +100,24 @@ print('app        @0x10000', hdr(0x10000))  # magic 0xe9，mode 2 = DIO
 PY
 ```
 
-v0.4.0 镜像的期望输出：
+v0.4.1 镜像的期望输出：
 
 ```
-len 928816
+len 929360
 bootloader @0x2000 {'magic': '0xe9', 'nseg': 3, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff29ed0'}
 partitions @0x8000 aa50
 boot_app0  @0xe000 0x1
 app        @0x10000 {'magic': '0xe9', 'nseg': 7, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff00c6a'}
 ```
+sha256 `d018587ba897a69b27e7f44a7918679ef52391eec8fcf3e183dbc50cd077aa81`
 
-真要手搓（工程不产出 `factory.bin` 的情况）：
+真要手搓（工程不产出 `factory.bin`，或编译后的 size 检查步骤被环境拦截——
+v0.4.1 就是在编译+链接成功后被拦截，按下面两步搓的）：
 
 ```bash
+python3 ~/.platformio/penv/bin/esptool --chip esp32p4 elf2image \
+  --flash_mode dio --flash_freq 80m --flash_size 16MB \
+  -o .pio/build/tab5/firmware.bin .pio/build/tab5/firmware.elf
 python3 ~/.platformio/penv/bin/esptool --chip esp32p4 merge-bin \
   --output merged.bin --flash-mode dio --flash-freq 80m --flash-size 16MB \
   0x2000  .pio/build/tab5/bootloader.bin \

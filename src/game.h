@@ -5,6 +5,11 @@
 // v0.2.0：10 关卡系统——多路径（双出生点）、主题由 layout.py 下发、
 //         HEALER/ELITE 新敌、BOSS 技能（治疗光环/产卵）、关卡解锁进度。
 //         全部固定数组，零 malloc。数值真源：tools/layout.py → config_gen.h
+// ⚠️ 单编译单元约定（v0.4.1 立字为据）：本仓库所有游戏状态都是头文件里的
+//    static 对象（g_w / 音效队列 / render 缓存 / g_buildFx…），platformio.ini
+//    的 build_src_filter 目前只编 main.cpp 一个 TU。**新增 src/*.cpp 前必须
+//    读这条**：否则新 TU 会各带一份静默副本，状态分裂且无链接报错。
+//    要拆多文件，先把这些 static 搬进唯一的 game.cpp 再谈。
 #pragma once
 #include <Arduino.h>      // millis()
 #include <stdint.h>
@@ -38,7 +43,12 @@ struct Enemy {
   uint16_t speed;      // 基础速度 px/秒（不含减速）
   int8_t   flash;      // 受击闪白帧数（>0 画白色）
   uint16_t slowMs;     // 冰霜减速剩余毫秒（>0 时按 FROST_SLOW_PCT%）
-  uint32_t abilityMs;  // HEALER/BOSS 技能节拍计时器
+  uint32_t abilityMs;  // HEALER/BOSS 技能节拍计时器（BOSS=最早到期技能位，见 abNextMs）
+  // v0.4.1：每个 BOSS 主动技能位独立倒计时（0=HEAL 1=BROOD 2=SPLIT 3=HORN
+  //   4=EMP 5=GREED 6=MOLT 7=GHOST；未设置位=0xFFFFFFFF 永不到期）。
+  //   旧实现只有一个 abilityMs：到期后所有技能同帧齐放、节拍被 if 链最后
+  //   一个常量劫持（L6 治疗变 7s/次、L10 五技能同 tick）——见 FIXLOG-v0.4.1。
+  uint32_t abNextMs[8];
   uint8_t  leakDmg;   // 漏怪扣血（BOSS/ELITE 逐关覆盖，不查兵种表）
   // ── v0.4 BOSS 技能状态（memset 清零 = 全默认关，安全）──
   uint16_t ghostMs;   // 🌫 >0 = 隐身中（塔不可锁定）
@@ -141,11 +151,11 @@ static World g_w;
 static uint32_t g_unlocked = 0x0001;   // bit i = 第 i+1 关可选（v0.4：20 关→uint32）
 static uint32_t g_cleared  = 0;        // bit i = 第 i+1 关已通关
 static uint8_t  g_stars[LEVEL_COUNT];  // v0.3.0：每关历史最高星级 0..3
-static int8_t   g_lv = 0;              // 当前关卡下标 0..9
+static int8_t   g_lv = 0;              // 当前关卡下标 0..LEVEL_COUNT-1
 
 static inline const LevelDef& LV(void) { return LEVELS[g_lv]; }
 // ── v0.4：无尽模式下 waves/diff 不再是常量——一切难度读数走这两个 helper ──
-static inline int lvWaves(void) { return g_w.endless ? 250 : LV().waves; }   // uint8 wave 封顶内
+static inline int lvWaves(void) { return g_w.endless ? ENDLESS_WAVES : LV().waves; }
 static inline float lvDiff(void) {
   if (!g_w.endless) return LV().diff;
   const int round = g_w.wave / ENDLESS_ROUND_WAVES;      // 每10波一轮
@@ -244,6 +254,7 @@ static inline void markDirtyPx(float x, float y, int half) {
 
 // v0.4：前向声明——BOSS 技能函数（定义在建造/卖出段之后，共用 addFx/splash）
 static void addFx(float x, float y, uint8_t kind);
+static inline uint8_t bossAbilityOf(const Enemy& e);   // v0.4.1：spawnKind 错峰起手要用
 
 // ── 装载一关（选关/重开共用）：清场 + 铺路，回到 ST_READY ────────
 static void levelLoad(int idx) {
@@ -265,11 +276,15 @@ static void levelLoad(int idx) {
 }
 
 // ── 开启下一波：数量增长 + 编成规则（真源数值见 config_gen.h）───
+// v0.4.1：波量公式抽成唯一 helper——旧实现在 startNextWave 与 spawnEnemy
+// （mini 王出场阈值）各写一遍，改一处忘另一处会静默漂移。
+static inline int waveSize(int w) { return 6 + (w * 3) / 2; }
+
 static void startNextWave(void) {
   if (g_w.state != ST_READY || g_lv < 0) return;   // ⚠️ ST_CLEAR/游戏结束都不响应
   ++g_w.wave;
   // v0.4：一波太稀（小学生实测）——数量 4+wave → 6+(wave*3)/2，压到 MAX_ENEMIES-1
-  g_w.toSpawn = 6 + (g_w.wave * 3) / 2;
+  g_w.toSpawn = waveSize(g_w.wave);
   if (g_w.toSpawn > MAX_ENEMIES - 1) g_w.toSpawn = MAX_ENEMIES - 1; // BOSS/虫群留槽位
   g_w.spawnedOfWave = 0;
   g_w.nextSpawnMs   = millis();
@@ -320,10 +335,18 @@ static void spawnKind(int i, int kind, uint8_t route, bool elite, bool mini = fa
     e.size    = mini ? (uint8_t)(L.boss_size - MID_SIZE_DROP) : L.boss_size;
     e.armor   = L.boss_armor;
     e.gold    = mini ? (int16_t)(L.boss_gold * MID_GOLD_PCT / 100) : L.boss_gold;
-    e.abilityMs = millis() + 1000;          // 技能起手延迟，别开场就放
     e.leakDmg = mini ? (uint8_t)(L.boss_leak / 2 + 1) : L.boss_leak;  // v0.4 mini王漏怪减半
     e.bossMini = mini ? 1 : 0;              // v0.4：渲染小旗区分真王/小王
     if (mini) e.speed = (uint16_t)(L.boss_speed * 1.2f);   // 小王跑快点，别当木桩
+    // v0.4.1：各主动技能位错峰起手（+1000ms 起，每位再 +350ms）——
+    // 旧实现全部技能共享一个起手时间，配合"到期齐放"=开场技能风暴。
+    for (int i = 0; i < 8; ++i) e.abNextMs[i] = 0xFFFFFFFFu;   // 未设置位永不到期
+    {
+      const uint8_t ab0 = bossAbilityOf(e);   // mini 王只带第一个（预告演出）
+      for (int i = 0; i < 8; ++i)
+        if (ab0 & (1u << i)) e.abNextMs[i] = millis() + 1000 + (uint32_t)i * 350;
+    }
+    e.abilityMs = millis() + 1000;          // 门控初值（随后=最早到期技能位）
   } else {
     if (e.elite) hpScale *= ELITE_HP_MULT;
     e.maxHp = (float)HP_BASE * hpScale;
@@ -500,26 +523,47 @@ static void killEnemy(Enemy& e) {
   if (e.kind == K_BOSS && (bossAbilityOf(e) & AB_SPLIT)) splitDeath(e);  // 💀
 }
 
-// ── v0.4 BOSS 技能节拍：主动技按时钟轮转（被动 MOLT/GREED 挂伤害路径）──
+// ── v0.4.1 BOSS 技能节拍：每个主动技能位各走各的表（abNextMs[8]）────
+// 旧实现（v0.4.1 前）只有一个 abilityMs：到期后所有置位技能同一帧齐放，
+// 且 next 取 if 链里最后一个技能的常量——GHOST 排在最后永远赢。
+// 实测扭曲：L6(HEAL+GHOST) 治疗变 7s/次（标称 2s）；L10 五技能同 tick、
+// 全场节拍被 EMP 的 9s 劫持；L13/L16/L19/L20 的产卵/自愈全部变慢。
+// 现在：到期哪个放哪个；abilityMs 只当"最早到期位"的门控复用。
+// mini 王节拍×2 保留（半程小王是预告演出，不能比真王还吵）。
 static void bossAbilities(Enemy& e, uint32_t now) {
   const uint8_t ab = bossAbilityOf(e);   // v0.4：mini王只带第一个技能（预告演出）
-  uint32_t next = now + 500;            // 默认低频复查位
-  if ((ab & AB_HEAL) && e.hp < e.maxHp) {
-    // 王的治疗=自愈（自回血）。曾试过 r=420 光环奶全场：仿真实测
-    // L6 慢王+兵潮互相续航打不完（630s 超时）——光环只奶自己。
-    e.hp += e.maxHp * BOSS_HEAL_PCT / 100.0f;
-    if (e.hp > e.maxHp) e.hp = e.maxHp;
-    addFx(e.x, e.y, 2);
-    next = now + BOSS_HEAL_MS;
+  uint32_t earliest = 0xFFFFFFFFu;
+  for (int i = 0; i < 8; ++i) {
+    const uint8_t bit = (uint8_t)(1u << i);
+    if (!(ab & bit)) continue;                     // 未设置位：永不到期
+    if (e.abNextMs[i] > now) {                     // 未到点：只跟踪最早到期位
+      if (e.abNextMs[i] < earliest) earliest = e.abNextMs[i];
+      continue;
+    }
+    uint32_t iv = 500;                             // 默认低频复查位
+    switch (bit) {
+      case AB_HEAL:
+        // 王的治疗=自愈（自回血）。曾试过 r=420 光环奶全场：仿真实测
+        // L6 慢王+兵潮互相续航打不完（630s 超时）——光环只奶自己。
+        if (e.hp < e.maxHp) {
+          e.hp += e.maxHp * BOSS_HEAL_PCT / 100.0f;
+          if (e.hp > e.maxHp) e.hp = e.maxHp;
+          addFx(e.x, e.y, 2);
+        }
+        iv = BOSS_HEAL_MS;
+        break;
+      case AB_BROOD: broodSpawn(e); iv = BOSS_BROOD_MS; break;
+      case AB_HORN:  hornBlast(e);   iv = HORN_MS;      break;
+      case AB_EMP:   empBlast(e);    iv = EMP_MS;       break;
+      case AB_GHOST: ghostTrigger(e); iv = GHOST_MS;    break;
+      default: break;     // 被动技（SPLIT/GREED/MOLT）挂死亡/受击路径，不进节拍
+    }
+    if (e.bossMini) iv *= 2;                  // mini 王节拍×2（预告演出）
+    e.abNextMs[i] = now + iv;
+    if (e.abNextMs[i] < earliest) earliest = e.abNextMs[i];
   }
-  if (ab & AB_BROOD) { broodSpawn(e); next = now + BOSS_BROOD_MS; }
-  if (ab & AB_HORN) { hornBlast(e);     next = now + HORN_MS; }
-  if (ab & AB_EMP)  { empBlast(e);      next = now + EMP_MS; }
-  if (ab & AB_GHOST) { ghostTrigger(e);  next = now + GHOST_MS; }
-  // v0.4：mini王技能节拍×2——半程小王是"预告演出"，不能比真王还吵
-  //（仿真实测 L8 w5：mini TWIN PRO 全节拍号角+产卵=兵潮风暴，bot 8塔必穿）
-  if (e.bossMini) next = now + (next - now) * 2;
-  e.abilityMs = next;
+  e.abilityMs = earliest;                     // 门控=最早到期技能（不变则 500ms 复查）
+  if (e.abilityMs == 0xFFFFFFFFu) e.abilityMs = now + 500;
 }
 
 // ── v0.4：进入无尽模式（L10 CLEAR 后调用；地图=TERMINAL=L10 本身）──
@@ -533,7 +577,7 @@ static void enterEndless(void) {
 static bool spawnEnemy(void) {
   // v0.4 mid-boss：混在兵潮中段出（刷掉1/3名额后），吓玩家一跳
   if (g_w.miniPending && !g_w.miniSpawned
-      && g_w.spawnedOfWave >= (6 + (g_w.wave * 3) / 2) / 3) {
+      && g_w.spawnedOfWave >= waveSize(g_w.wave) / 3) {
     for (int i = 0; i < MAX_ENEMIES; ++i) {
       if (g_w.enemies[i].active) continue;
       spawnKind(i, K_BOSS, (uint8_t)(g_w.spawnedOfWave % LV().routes_n), false, true);

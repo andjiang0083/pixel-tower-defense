@@ -17,7 +17,7 @@ drawn with `fillRect`, every sound is synthesised from arithmetic.**
 2. Or with esptool, writing the merged image at 0x0 / 或用 esptool 把合并镜像写到 0x0：
 
 ```bash
-esptool --chip esp32p4 write-flash -z 0x0 pixel-tower-defense-v0.4.0-tab5-merged.bin
+esptool --chip esp32p4 write-flash -z 0x0 pixel-tower-defense-v0.4.1-tab5-merged.bin
 ```
 
 ⚠️ Use the **merged** image (this file's sibling `.bin`), not an app-only
@@ -27,7 +27,7 @@ overwrites the bootloader and the screen stays black.
 只写 app 会盖掉 bootloader，刷完黑屏。
 
 **Device / 设备：** M5Stack Tab5 (ESP32-P4, 1280×720 touch screen)
-**Version / 版本：** v0.4.0 · merged image 928,816 B · sha256 in the `.sha256` file
+**Version / 版本：** v0.4.1 · merged image 929,360 B · sha256 in the `.sha256` file
 
 ---
 

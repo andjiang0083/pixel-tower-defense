@@ -25,11 +25,11 @@ cd pixel-tower-defense
 pio run -e tab5
 ```
 
-Expected on a v0.4.0 tree:
+Expected on a v0.4.1 tree:
 
 ```
-RAM:   [=         ]   6.9% (used 35472 bytes from 512000 bytes)
-Flash: [===       ]  26.0% (used 819150 bytes from 3145728 bytes)
+RAM:   [=         ]   7.2% (used 37016 bytes from 512000 bytes)
+Flash: [===       ]  26.1% (used 819586 bytes from 3145728 bytes)
 ```
 
 `platformio.ini` pins the important things; do not "clean them up":
@@ -39,7 +39,13 @@ Flash: [===       ]  26.0% (used 819150 bytes from 3145728 bytes)
 | `board = esp32-p4-evboard` + `-DARDUINO_M5STACK_TAB5` | M5GFX only auto-detects the Tab5 panel and GT911 touch with this define |
 | `board_build.psram = enable`, 200 MHz | The frame buffer lives in PSRAM. M5GFX aborts with `M5Tab5 need PSRAM SPEED 200MHz` otherwise |
 | `src/sdkconfig.h` | Overrides the PSRAM speed for the Arduino libraries |
-| `board_build.partitions = app3M_fat9M_16MB.csv` | 3 MB app partition |
+| `board_build.partitions = app3M_fat9M_16MB.csv` | 3 MB app partition (the CSV ships inside the platform package, not this repo) |
+| `platform_packages` → `launcher_tab5_esp32-arduino-libs-20260519-233957.tar.xz` | Prebuilt Arduino libs for the Tab5's octal PSRAM. This is a **dated GitHub release asset**: if it is ever deleted, the build is not reproducible. If you archive a copy, record its sha256 here |
+
+If the build dies at the very last step with
+`Brokered host copy overwrite refused by file policy`, the compile and link have
+already succeeded — see §4 for building the merged image by hand from
+`.pio/build/tab5/` (that is how the v0.4.1 release image was produced).
 
 ## 3. Flash over USB
 
@@ -81,9 +87,9 @@ PlatformIO 12+ already produces exactly that file:
 
 ```bash
 cp .pio/build/tab5/firmware.factory.bin \
-   releases/pixel-tower-defense-v0.4.0-tab5-merged.bin
-shasum -a 256 releases/pixel-tower-defense-v0.4.0-tab5-merged.bin \
-  > releases/pixel-tower-defense-v0.4.0-tab5-merged.bin.sha256
+   releases/pixel-tower-defense-v0.4.1-tab5-merged.bin
+shasum -a 256 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin \
+  > releases/pixel-tower-defense-v0.4.1-tab5-merged.bin.sha256
 ```
 
 Verify the segments before shipping (this is the check that catches a black screen):
@@ -91,7 +97,7 @@ Verify the segments before shipping (this is the check that catches a black scre
 ```bash
 python3 - <<'PY'
 import struct, pathlib
-b = pathlib.Path('releases/pixel-tower-defense-v0.4.0-tab5-merged.bin').read_bytes()
+b = pathlib.Path('releases/pixel-tower-defense-v0.4.1-tab5-merged.bin').read_bytes()
 def hdr(off):
     return dict(magic=hex(b[off]), nseg=b[off+1], mode=b[off+2],
                 size_freq=hex(b[off+3]), entry=hex(struct.unpack_from('<I', b, off+4)[0]))
@@ -103,19 +109,25 @@ print('app        @0x10000', hdr(0x10000))  # magic 0xe9, mode 2 = DIO
 PY
 ```
 
-Expected output for the v0.4.0 image:
+Expected output for the v0.4.1 image:
 
 ```
-len 928816
+len 929360
 bootloader @0x2000 {'magic': '0xe9', 'nseg': 3, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff29ed0'}
 partitions @0x8000 aa50
 boot_app0  @0xe000 0x1
 app        @0x10000 {'magic': '0xe9', 'nseg': 7, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff00c6a'}
 ```
+sha256 `d018587ba897a69b27e7f44a7918679ef52391eec8fcf3e183dbc50cd077aa81`
 
-If you ever need to build it by hand (a project that does not emit `factory.bin`):
+If you ever need to build it by hand (a project that does not emit `factory.bin`,
+or a build where the post-size step is blocked — v0.4.1 was merged exactly this
+way after the compile+link had already succeeded):
 
 ```bash
+python3 ~/.platformio/penv/bin/esptool --chip esp32p4 elf2image \
+  --flash_mode dio --flash_freq 80m --flash_size 16MB \
+  -o .pio/build/tab5/firmware.bin .pio/build/tab5/firmware.elf
 python3 ~/.platformio/penv/bin/esptool --chip esp32p4 merge-bin \
   --output merged.bin --flash-mode dio --flash-freq 80m --flash-size 16MB \
   0x2000  .pio/build/tab5/bootloader.bin \

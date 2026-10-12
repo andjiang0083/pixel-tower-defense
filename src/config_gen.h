@@ -127,7 +127,6 @@ static const uint8_t TOWER_AIR_OK[TT_COUNT] = { 1, 0, 0, 0, 1 };
 #define HEAL_MS         1600
 #define BOSS_HEAL_PCT   6      // boss heal aura +%%maxHp
 #define BOSS_HEAL_MS    2000
-#define BOSS_HEAL_R     420      // boss heal aura radius px (6 cells)
 #define BOSS_BROOD_MS   4000      // boss spawns SWARM every ms
 #define BOSS_BROOD_SIZE 3
 #define ELITE_HP_MULT   1.8f
@@ -162,6 +161,7 @@ static const uint8_t TOWER_AIR_OK[TT_COUNT] = { 1, 0, 0, 0, 1 };
 #define MID_GOLD_PCT    60    // gold ×%
 #define MID_SIZE_DROP   8    // size -px
 // endless（L10 CLEAR 后 TERMINAL 无限刷）
+#define ENDLESS_WAVES      250  // total waves cap in endless (lvWaves)
 #define ENDLESS_DIFF_PCT   6  // diff ×(1+%) per round
 #define ENDLESS_ROUND_WAVES 10 // one round = N waves; boss on last
 #define ENDLESS_MINI_EVERY  5 // mini-boss cadence
