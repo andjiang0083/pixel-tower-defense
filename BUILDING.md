@@ -139,11 +139,17 @@ python3 ~/.platformio/penv/bin/esptool --chip esp32p4 merge-bin \
 Do **not** add `--pad-to-size`/`--fill-flash-size`: the merged image should be under
 1 MB, not 16 MB.
 
-> ⚠️ A merged image `eraseAll`s the flash. On a device that already has WiFi
-> credentials in NVS, flashing the merged image erases them; to upgrade in place
-> while keeping NVS, write only the app partition
-> (`esptool write-flash 0x10000 .pio/build/tab5/firmware.bin`). This game stores
-> level progress in NVS, so the same applies here: merged = fresh install.
+> ⚠️ **NVS behaviour differs by flasher** (verified on hardware, v0.4.1, 2026-10-12):
+> the merged image carries `0xFF` in the NVS region (0x9000–0xDFFF).
+> - **M5Burner** writes with `eraseAll` → NVS wiped → **fresh install**.
+> - **`esptool write_flash`** (default compression) **skips all-`0xFF` blocks**
+>   (does not erase, does not write them) → the existing NVS **survives** → the
+>   flash is an in-place upgrade that keeps level progress. This is why the v0.4.1
+>   readback differs from the image by exactly 62 bytes inside NVS: the old save.
+>   To force a truly fresh install with esptool, `erase_flash` first (or pass
+>   `--no-compress`).
+> This game stores level progress in NVS; either behaviour can be correct —
+> just know which one you are getting.
 
 ## 5. Regenerating the assets (the "zero asset" files)
 
@@ -168,7 +174,7 @@ logic and rendering, not a re-implementation:
 
 ```bash
 g++ -std=c++17 -O2 -I sim/compat -I src sim/run.cpp -o sim/sim && ./sim/sim
-# → 165 passed, 0 failed
+# → 178 passed, 0 failed
 ```
 
 Useful extras:

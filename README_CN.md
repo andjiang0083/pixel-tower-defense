@@ -167,7 +167,7 @@ pio run -e tab5 -t upload            # USB-C 烧录
 | 覆盖预算审计（`tools/map_design.py`） | 20 关全 PASS：最少塔数 5→18 ≤ 20、零死角、三种打法均可 |
 | `pio run -e tab5`（v0.4.1） | SUCCESS —— RAM 37,016 B（7.2%）、Flash 819,586 B（26.1%） |
 | 合并镜像（929,360 B） | `esptool merge_bin` 合成；boot/分区/app 三段头与 v0.4.0 布局逐字节一致（0x2000 / 0x8000 / 0xe000 / 0x10000） |
-| 真机刷入 + 回读 | **待硬件验证** —— 目前只做了离线结构校验（见 `docs/FIXLOG-v0.4.1.md` §6） |
+| 真机刷入 + 回读 | **通过** —— 2026-10-12 刷入真机 Tab5（ESP32-P4 rev 1.3）：bootloader/分区/boot_app0/app 四段回读**逐字节一致**（app 段 sha256 `682b739d…`）；开机横幅 `=== PIXEL TOWER DEFENSE v0.4.1 | board=22 | 1280x720 ===`；旧 NVS 存档（`unlock=0007 cleared=0003`）保留并被正确读入 |
 
 仿真抓到并锁进回归的历史 bug：`int8_t` 把弹速截断、坐标没写回、索敌"先打远的"
 导致眼前目标不打、测试 bot 只升一座塔把经济伪装成宽松。v0.4 还抓到一张 16 位解锁

@@ -1,6 +1,6 @@
 # HANDOFF — tab5-tower-defense（历史详述）
 
-> ⚠️ **状态块（2026-10-12 16:30 CST，覆盖本文下方一切旧描述）**
+> ⚠️ **状态块（2026-10-12 17:00 CST，覆盖本文下方一切旧描述）**
 > **新会话的权威提示词已迁到 [`docs/HANDOFF-PROMPT.md`](docs/HANDOFF-PROMPT.md) —— 要唤起新会话就贴那一份，不要再贴本文件。**
 > 本文件保留为**发布前的详述存档**（含 v0.4 开发期细节）；与提示词文件冲突时，**以 `docs/HANDOFF-PROMPT.md` 为准**。
 >
@@ -9,13 +9,15 @@
 > 已出**双语宣传图**（`releases/cover-*.png`、`releases/poster-*.png`，`tools/mkposter.py` 可重出）、
 > 已有**开发树→公开树单向同步**纪律（`tools/sync-public.sh`）与**依赖钉版**（M5Unified 0.2.25 / M5GFX 0.2.32）。
 >
-> **v0.4.1（2026-10-12 下午）：** 对 v0.4.0 做了一轮全量 code review，
+> **v0.4.1（2026-10-12）：** 对 v0.4.0 做了一轮全量 code review，
 > 修掉 2 个真 bug（NVS 去重缓存整型截断 → L17-20 通关画面每帧写 flash；
 > 重打刷高星级静默丢失）+ BOSS 技能节拍劫持 + 6 类设计/工程问题，
 > 仿真断言 165 → 178。**问题/修法/经验/下次提示词全部在
 > [`docs/FIXLOG-v0.4.1.md`](docs/FIXLOG-v0.4.1.md)**（那份是 v0.4.1 的论据库，
 > 本文件与它冲突时以 FIXLOG + HANDOFF-PROMPT 为准）。v0.4.1 固件已在公开仓
-> 克隆里编译打包，**尚未 push / 尚未建 release / 尚未更新 M5Burner**。
+> 克隆里编译打包，**并于 2026-10-12 刷入真机回读验证**（ESP32-P4 rev 1.3，
+> 固件本体逐字节一致，NVS 旧存档保留）；**尚未 push / 尚未建 release /
+> 尚未更新 M5Burner**。
 
 ---
 

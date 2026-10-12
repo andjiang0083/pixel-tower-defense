@@ -128,10 +128,14 @@ python3 ~/.platformio/penv/bin/esptool --chip esp32p4 merge-bin \
 
 **不要**加 `--pad-to-size`/`--fill-flash-size`：合并镜像应该不到 1 MB，而不是 16 MB。
 
-> ⚠️ 合并镜像会 `eraseAll`。已经配过网、NVS 里有凭据的设备刷合并镜像会把它们清掉；
-> 想保留 NVS 原地升级，只写 app 分区
-> （`esptool write-flash 0x10000 .pio/build/tab5/firmware.bin`）。本游戏把关卡进度
-> 存在 NVS 里，同理：刷合并镜像 = 全新安装。
+> ⚠️ **NVS 行为因烧录工具而异**（2026-10-12 真机验证，v0.4.1）：合并镜像的 NVS
+> 区域（0x9000–0xDFFF）是 `0xFF`。
+> - **M5Burner** 走 `eraseAll` → NVS 被清 → **全新安装**。
+> - **`esptool write_flash`**（默认压缩）会**跳过全 `0xFF` 的块**（不擦不写）
+>   → 设备上已有的 NVS **原样保留** → 相当于保进度原地升级。v0.4.1 回读与镜像
+>   恰好差 62 字节、全在 NVS 区，就是这份旧存档。想用 esptool 也强制全新安装，
+>   先 `erase_flash`（或加 `--no-compress`）。
+> 本游戏把关卡进度存在 NVS 里——两种行为都可能"对"，关键是知道你用的是哪种。
 
 ## 5. 重新生成"零素材"文件
 
@@ -154,7 +158,7 @@ python3 tools/gen_sfx.py      # → src/sfx_data.h     （全部 PCM，合成而
 
 ```bash
 g++ -std=c++17 -O2 -I sim/compat -I src sim/run.cpp -o sim/sim && ./sim/sim
-# → 165 passed, 0 failed
+# → 178 passed, 0 failed
 ```
 
 顺手能用的几条：

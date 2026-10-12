@@ -121,11 +121,16 @@
 | 门禁关 bot | L1–L4 + L11–L13 仍全通，非门禁关失败集合与 v0.4.0 **完全一致**（节拍修复未改变难度读数） |
 | `pio run -e tab5` | 编译+链接成功：RAM 37,016 B（7.2%）/ Flash 819,586 B（26.1%）（v0.4.0：35,472/819,150；+1,544 B ≈ Enemy.abNextMs[8] 48×32B） |
 | 合并镜像 | `releases/pixel-tower-defense-v0.4.1-tab5-merged.bin`，929,360 B，sha256 `d018587b…aa81`；三段头与 v0.4.0 布局逐字节一致（boot e903024f / parts aa50 / app e907024f，DIO） |
+| **真机刷入+回读**（2026-10-12，ESP32-P4 rev 1.3，`/dev/cu.usbmodem1101`） | `write_flash 0x0 merged.bin` → `read_flash 0x0 929360` 回读：**固件本体（bootloader/分区/boot_app0/app）逐字节一致**，app 段 sha256 两侧同为 `682b739d…`；开机横幅 `=== PIXEL TOWER DEFENSE v0.4.1 | board=22 | 1280x720 ===`；旧 NVS 存档 `unlock=0007 cleared=0003` 被新固件正确读入 |
 
 > 注：编译在最后一步（pioarduino 的 size 检查）被本机沙箱拦了一个文件操作，
 > 但编译与链接已成功完成；firmware.bin 由 esptool elf2image 补齐（DIO@80m），
 > 合并走 merge_bin。产物结构已用 BUILDING.md §4 的同款脚本核验。
-> **真机刷入+回读未做**（无硬件），见 §六。
+>
+> **回读差异只有 NVS 区（0x9000–0xDFFF）62 字节**，这是 esptool 压缩写入的
+> 特性：镜像里全 0xFF 的块被跳过（不擦不写），所以设备上 v0.4.0 的旧存档
+> 原样保留——v0.4.1 与 v0.4.0 的 NVS 键格式相同，旧进度直接可续用。
+> （M5Burner 是 `eraseAll` 语义，走它才是全新安装；此差异已写进 BUILDING.md §4。）
 
 ## 四、经验（下次别再交学费）
 
@@ -157,16 +162,18 @@ v0.4.1 已由一轮全量 review 修完并打包，先读 docs/FIXLOG-v0.4.1.md 
 
 【树的位置】
 - 本目录 = 公开仓克隆（github.com/andjiang0083/pixel-tower-defense），v0.4.1 的
-  修复都在这里，已本地 commit、未 push、未建 release。
+  修复都在这里，已本地 commit、已刷真机回读验证，未 push、未建 release。
 - 作者开发树 ~/esp32/tab5-tower-defense、发布镜像树 ~/esp32/pixel-tower-defense-public
   （只准 tools/sync-public.sh 单向同步）——本目录的改动要合回开发树再走原发布流程。
 - 大仓 ~/esp32 已不维护，别在里面找代码。
 
-【已验证事实（2026-10-12，复跑命令在 docs/HANDOFF-PROMPT.md】）
+【已验证事实（2026-10-12，复跑命令在 docs/HANDOFF-PROMPT.md）】
 - sim：178 passed / 0 failed（v0.4.0 是 165；新增 §15-§18 全是 v0.4.1 回归）
 - 生成器：layout/gen_font/gen_sfx 输出与入库一致，CI 会查漂移
 - 门禁关 L1-4 + L11-13 bot 全通；L8/L14-20 bot 打不过是设计使然（bot 不是难度标尺）
 - 构建/哈希/镜像结构：见 README 验证表与 BUILDING.md
+- 真机（ESP32-P4 rev 1.3）已刷入并回读：固件本体逐字节一致，NVS 旧存档保留，
+  开机横幅 v0.4.1 | board=22（board 打的是 M5Unified 枚举值，不是字符串）
 
 【v0.4.1 修了什么（细节见 FIXLOG 第二节）】
 P0：NVS 去重缓存 uint16→uint32（L17-20 通关画面每帧写 flash）——已抽成
@@ -203,7 +210,10 @@ P3：压暗 4×4 步进；px_char RLE 合并；CI workflow（sim+三生成器漂
 2. **bmorcelli libs 资产指纹**：`platform_packages` 里那个带日期的 tarball
    （`launcher_tab5_esp32-arduino-libs-20260519-233957.tar.xz`）建议下载一份
    存档并把 sha256 记进 BUILDING.md——GitHub release 资产被删则构建不可复现。
-3. **真机验收**：v0.4.1 改了 BOSS 节拍与 HUD 渲染，刷机后重点看：
-   L6 王自愈频率、L10 终王技能是否错峰、生命 10→9 时 HP 数字无残边、
-   通关/死亡画面卡顿是否减轻。开机横幅应为 `v0.4.1`。
+3. **~~真机验收~~（已完成 2026-10-12）**：v0.4.1 已刷入 ESP32-P4 rev 1.3 并回读
+   （固件本体逐字节一致，NVS 旧存档保留，横幅 v0.4.1）。v0.4.1 改了 BOSS 节拍与
+   HUD 渲染，真人试玩时重点看：L6 王自愈频率（应回到标称 2s）、L10 终王技能是否
+   错峰、生命 10→9 时 HP 数字无残边、通关/死亡画面卡顿是否减轻。
+   剩下一击是**真人试玩回收**（L11–L20 第几波崩）与**真机实拍**（README 首图），
+   硬件现在在线（`/dev/cu.usbmodem1101`）。
 ```

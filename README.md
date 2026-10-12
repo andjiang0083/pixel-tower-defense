@@ -173,7 +173,7 @@ the rest are recorded for information.
 | Coverage audit, all 20 maps (`tools/map_design.py`) | All PASS: minimum towers 5→18 ≤ 20, no dead path cells, three viable build orders |
 | `pio run -e tab5` (v0.4.1) | SUCCESS — RAM 37,016 B (7.2 %), Flash 819,586 B (26.1 %) |
 | Merged image (929,360 B) | built with `esptool merge_bin`; boot/partition/app headers verified identical to the v0.4.0 layout (offsets 0x2000 / 0x8000 / 0xe000 / 0x10000) |
-| Device flash + readback | **pending hardware** — structure verified offline only (see `docs/FIXLOG-v0.4.1.md` §6) |
+| Device flash + readback | **PASS** — flashed to a real Tab5 (ESP32-P4 rev 1.3) on 2026-10-12; bootloader / partition / boot_app0 / app regions read back **byte-identical** (app sha256 `682b739d…`); boot banner `=== PIXEL TOWER DEFENSE v0.4.1 | board=22 | 1280x720 ===`; the previous NVS progress (`unlock=0007 cleared=0003`) survived and loaded correctly |
 
 Bugs found and locked in by the simulator (now regression assertions): `int8_t`
 projectile speed truncation, coordinates not written back, target selection
