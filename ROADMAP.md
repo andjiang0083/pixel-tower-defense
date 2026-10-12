@@ -62,6 +62,61 @@ Needs somebody with the hardware and a camera.
   authoring those bitmaps by hand. Interesting, but it is a real chunk of work;
   propose it if you care about it.
 
+## 7. Suggested bundle for the next version (v0.5.0) — added after the v0.4.1 review
+
+A version-bundle view over the sections above. Ordering principle: **data first
+(zero risk) → retention features (low risk) → engineering leverage (medium) →
+needs-a-decision (do not schedule yet)**.
+
+**Tier 1 — data and foundations (zero risk, do first)**
+
+1. **Quantify L14–L20 difficulty** (first half of §2): re-run the bot with 2×
+   starting gold on those seven levels and read the `gold/alive/lives` columns
+   (`SIM_SHOT=<lv>` diagnostics) to classify each as *economy-locked* vs
+   *structurally broken*. Acceptance: one conclusion sentence per level, with
+   the supporting trend, recorded below this section.
+2. **Build reproducibility archive**: download the dated `launcher_tab5_*`
+   libs tarball once, store it, record its sha256 in `BUILDING.md`. Acceptance:
+   a fresh clone builds with the network unplugged.
+3. **Land `docs/PLAYTEST.md`** (§3) so the next kid session produces
+   comparable data instead of anecdotes.
+
+**Tier 2 — retention features (low risk, the body of v0.5.0)**
+
+4. **Endless mode UI** (all of §1). Acceptance: the bot clears 3 endless
+   rounds, the record survives a reboot, and the HUD needs no rework — the
+   GOLD/WAVE erase boxes were already sized for endless digits in v0.4.1.
+5. **First-run onboarding overlay**: on the very first L1 entry, three steps
+   (place a tower → start the wave → watch it kill something), with an
+   "onboarded" flag in NVS. Rationale: the playtester is in primary school and
+   today's teaching is one static line of hint text.
+6. **Per-tower SFX variation** (§6, first bullet): the synth pipeline already
+   computes PCM at build time, so a per-tower base frequency/timbre parameter
+   adds zero assets. Acceptance: twelve towers firing at once are
+   distinguishable by ear.
+
+**Tier 3 — engineering leverage (medium risk, v0.5.x or its own bump)**
+
+7. **Upgrade the bot to split its defence between routes.** The roadmap itself
+   (§2) admits the bot is not a benchmark because it cannot split its defence.
+   Giving it route-budgeted building makes every future balance change
+   automatically verifiable — the one item that pays rent forever.
+8. **New content** (§5): 2–3 more maps plus one *spatial* boss ability
+   (temporarily walls off a build region) — which lands cleanly on the
+   per-ability timer refactor from v0.4.1.
+
+**Needs a decision (do not schedule yet)**
+
+9. **Chinese in-game HUD** (§6, last bullet): hand-authoring a 5×7 CJK subset
+   is real work, and the readable font size on 1280×720 needs a trial first.
+10. **Split the single translation unit** (`game.h` → `game.cpp`): v0.4.1
+    documented the convention in the header; only worth the diff once a second
+    contributor appears.
+
+**Not version-gated (run in parallel)**: M5Burner entry update (waiting on
+review), a real-device photo for the README (§4), and the push/release flow
+(already proven end-to-end in v0.4.1).
+
 ## Non-goals
 
 - Real image/audio assets (that is the whole point of the project).
