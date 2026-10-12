@@ -17,7 +17,7 @@ drawn with `fillRect`, every sound is synthesised from arithmetic.**
 2. Or with esptool, writing the merged image at 0x0 / 或用 esptool 把合并镜像写到 0x0：
 
 ```bash
-esptool --chip esp32p4 write-flash -z 0x0 pixel-tower-defense-v0.4.2-tab5-merged.bin
+esptool --chip esp32p4 write-flash -z 0x0 pixel-tower-defense-v0.4.3-tab5-merged.bin
 ```
 
 ⚠️ Use the **merged** image (this file's sibling `.bin`), not an app-only
@@ -27,7 +27,7 @@ overwrites the bootloader and the screen stays black.
 只写 app 会盖掉 bootloader，刷完黑屏。
 
 **Device / 设备：** M5Stack Tab5 (ESP32-P4, 1280×720 touch screen)
-**Version / 版本：** v0.4.2 · merged image 944,272 B · sha256 `b5e70110…d5f5` (in the `.sha256` file)
+**Version / 版本：** v0.4.3 · merged image 944,048 B · sha256 `d40d8013…12025` (in the `.sha256` file)
 
 ---
 
@@ -35,6 +35,10 @@ overwrites the bootloader and the screen stays black.
 
 Touch only — this device has no buttons. / 纯触摸，这台设备没有实体按键。
 
+0. **It boots to a title screen.** Pick **EN / 中文** there (remembered across
+   reboots), then tap to start. The whole interface is bilingual.
+   开机会先进**标题界面**：那里选 **EN / 中文**（重启后还记得），再点一下开始。
+   整个界面都是双语的。
 1. **Tap a tower** in the bottom bar. / 点底部建造栏选塔。
 2. **Tap green ground** to build. Path, occupied and **rock** cells are refused —
    rock is drawn as grey rubble so you can see it before you tap.

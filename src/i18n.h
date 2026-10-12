@@ -8,6 +8,10 @@
 // cn_font.h（16x16，由 tools/gen_cnfont.py 从**本文件 CN 列**自动收字生成）。
 // ⚠️ 新增界面文本时必须：① 在两张表同序补条目；② 重跑 gen_cnfont.py
 //    （CI 漂移检查会抓没重跑的情况）。
+// ⚠️ v0.4.3 教训：**渲染代码里不允许出现硬编码中文**。v0.4.2 的 drawTitle
+//    把"像素塔防"直接写在代码里，绕过本表 → gen_cnfont 没收这 4 个字 →
+//    中文用户的开机标题缺 3 个字（截图才发现）。现在 px_text 缺字会累加
+//    s_cnMissing 计数器（pixel_text.h），仿真断言它为 0——系统性防线。
 // 关卡名 / BOSS 名 / 塔名是 ASCII 专名，不翻译（保持像素字统一）。
 // ----------------------------------------------------------------------------
 #pragma once
@@ -17,6 +21,9 @@ enum LangId : uint8_t { LANG_EN = 0, LANG_CN = 1, LANG_COUNT = 2 };
 
 enum StrId : uint8_t {
   STR_TITLE_HINT = 0,   // 标题界面：点击开始
+  STR_TITLE_CN,         // v0.4.3：标题界面的中文标题（英文模式用 drawRainbow 画彩色 PIXEL TOWER DEFENSE，不用此条）
+  STR_LANG_EN,          // v0.4.3：语言按钮标签——显示"目标语言"名（惯例）：EN 模式显示 ENGLISH/中文，CN 模式显示 英文/中文
+  STR_LANG_CN,          // v0.4.3：同上（中文按钮）。两者都走表，否则"中文"二字不进字库（v0.4.2 英文模式下中文按钮是空框）
   STR_VERSION,          // "版本"
   STR_LANG,             // "语言"
   STR_HP,               // HUD 生命标签
@@ -58,14 +65,13 @@ enum StrId : uint8_t {
   STR_ONBOARD_2,
   STR_ONBOARD_3,
   STR_ONBOARD_TAP,
-  STR_READY_HINT,       // 开局提示条
   STR_SIEGE_WARN,       // BOSS 封锁建造区提示
   STR_COUNT
 };
 
 // 两张表必须同序同量（gen_cnfont.py 与编译期都会间接校验）
 static const char* const STR_EN[STR_COUNT] = {
-  "TAP TO START", "VERSION", "LANGUAGE",
+  "TAP TO START", "PIXEL TOWER DEFENSE", "ENGLISH", "\xE4\xB8\xAD\xE6\x96\x87", "VERSION", "LANGUAGE",
   "HP", "WAVE", "FIGHTING", "NEXT WAVE",
   "TAP SLOT", "THEN MAP", "TAP TOWER=UP", "NEED",
   "DMG", "RNG", "SLOW", "PULSE", "SPLASH", "SINGLE", "NO-ARMOR",
@@ -80,12 +86,11 @@ static const char* const STR_EN[STR_COUNT] = {
   "STEP 2/3 - TAP NEXT WAVE TO FIGHT",
   "STEP 3/3 - STOP EVERY ENEMY!",
   "TAP TO CONTINUE",
-  "TAP GRASS TO BUILD TOWER",
   "BUILD ZONE LOCKED",
 };
 
 static const char* const STR_CN[STR_COUNT] = {
-  "点击开始", "版本", "语言",
+  "点击开始", "像素塔防", "英文", "中文", "版本", "语言",
   "生命", "波次", "战斗中", "下一波",
   "点塔位", "再点草地", "点塔=升级", "金币不足",
   "伤害", "射程", "减速", "脉冲", "溅射", "单体", "无视护甲",
@@ -100,7 +105,6 @@ static const char* const STR_CN[STR_COUNT] = {
   "第2步/3 - 点下一波开战",
   "第3步/3 - 拦住所有敌人！",
   "点击继续",
-  "点草地建塔",
   "建造区被封锁",
 };
 

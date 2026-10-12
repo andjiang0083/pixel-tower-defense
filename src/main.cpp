@@ -2,7 +2,7 @@
  * Copyright (c) 2026 andjiang0083
  */
 // ============================================================================
-// PIXEL TOWER DEFENSE — M5Stack Tab5 (ESP32-P4)  v0.4.2
+// PIXEL TOWER DEFENSE — M5Stack Tab5 (ESP32-P4)  v0.4.3
 // ----------------------------------------------------------------------------
 // ⚠️ 为什么不是 TFT_eSPI（重要）：
 //   Tab5 的屏是 MIPI DSI（ILI9881C / ST7123），不是 SPI/QSPI。ESP32-P4 的
@@ -77,7 +77,7 @@ void setup(void) {
   M5.begin(cfg);
   M5.Display.setRotation(3);              // Tab5 横屏 1280x720
 
-  Serial.printf("=== PIXEL TOWER DEFENSE v0.4.2 | board=%d | %dx%d ===\n",
+  Serial.printf("=== PIXEL TOWER DEFENSE v0.4.3 | board=%d | %dx%d ===\n",
                 (int)M5.getBoard(), SCREEN_W, SCREEN_H);
 
   // PSRAM 是帧缓冲所在地（DSI video mode）；没有就停下，别黑屏空转

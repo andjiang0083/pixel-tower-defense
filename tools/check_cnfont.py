@@ -10,22 +10,25 @@
 # 本脚本纯 stdlib，无需 Pillow，任何平台可跑。
 #
 # 校验内容：
-#   1. cn_font.h 的收录字符集 == i18n.h STR_CN 表的汉字集（增删文案都会被发现）
-#   2. CN_GLYPH_COUNT 宏 == 实际字形数 == 汉字数
+#   1. cn_font.h 的收录字符集 == i18n.h STR_CN 表要求的字符集（增删文案都会被发现）
+#   2. CN_GLYPH_COUNT 宏 == 实际字形数 == 需求字符数
 #   3. 每个字形 16 行 x 2 字节，且非空（空字形 = 字体缺字，渲染即失败）
+#
+# v0.4.3："哪些字符需要字形"改为与 tools/gen_cnfont.py 共用
+# tools/cn_glyph_rule.py —— 两边各写一遍汉字区判定的旧做法，会让全角标点
+# 之类的字符同时躲过生成器和检查器。
 import re, sys, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from cn_glyph_rule import collect_from_i18n
 
 def fail(msg):
     sys.exit("FAIL: %s" % msg)
 
 def needed_chars():
-    text = (ROOT / "src" / "i18n.h").read_text(encoding="utf-8")
-    m = re.search(r"STR_CN\[STR_COUNT\]\s*=\s*\{(.*?)\};", text, re.S)
-    if not m:
-        fail("STR_CN table not found in src/i18n.h")
-    return {ch for ch in m.group(1) if "\u4e00" <= ch <= "\u9fff"}
+    """需求字符集 = STR_CN 表内所有非 ASCII 字符（与生成器同源）。"""
+    return set(collect_from_i18n(ROOT))
 
 def main():
     # 文件是 UTF-8：注释含中文原文，字形键是 \xNN 转义（ASCII 安全部分）

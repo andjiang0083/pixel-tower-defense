@@ -4,6 +4,57 @@ Versions are small patch bumps on purpose: features are merged into a tiny
 version number instead of 1.x.0 jumps. Entries describe what a player can feel,
 not internal refactors.
 
+## v0.4.3 — the UI audit: text that overlapped, and glyphs that were missing
+
+v0.4.2 shipped a lot of new UI, so this release is a pass over every screen
+looking for text that collides with something else or silently fails to draw.
+Eight defects turned up. Three of them were invisible at normal zoom on the
+emulator and needed a pixel count to prove; one of them I missed entirely and
+the user caught it on hardware. Details in `docs/FIXLOG-v0.4.3.md`.
+
+Player-visible:
+- **The title screen no longer has overlapping text.** "LANGUAGE" used to sit
+  at a hardcoded x, running 26 px underneath the ENGLISH button. It is now
+  centred above the button pair.
+- **The Chinese title screen is complete.** It used to read 塔防 — the glyphs
+  for 像素塔防 were never in the font, because the title was drawn from a
+  hardcoded string that the font generator never saw. Same for the 中文 button
+  label in English mode, which rendered as an empty box.
+- **Full-width punctuation renders.** 已击败： and 拦住所有敌人！were missing
+  their ：and ！: the glyph collector only accepted CJK ideographs, so anything
+  outside U+4E00–9FFF was silently skipped.
+- **The gold "$" sign is back.** v0.4.2's SIEGE warning strip cleared a band
+  wide enough to erase it every frame — it had quietly disappeared from the HUD.
+- **The endless "BEST" readout no longer sits on top of "WAVE".** It moved into
+  the empty gap between the gold counter and the wave label.
+- **The ENDLESS MODE button on the L20 victory screen** no longer has its second
+  line cut off by the build bar.
+- **"TAP TO START" on the title screen is one clean line of text again.** It was
+  drawn twice as a cheap outline effect — and the second pass (dark, offset left
+  by 3 px) landed on top, so the text body came out dark with a 3 px bright
+  fringe. At a 15 px glyph the offset is the same size as the stroke itself, so
+  the two passes interleaved into a doubled, blurry look in both languages.
+  Reordering them does not help; that size has no room for an outline.
+- Nothing you can see was removed, but one screen's worth of machinery is gone:
+  the "tap grass to build" hint strip was dead code (the tutorial overlay
+  replaced it back in v0.4.2) and is now deleted outright rather than kept
+  around with stale coordinates.
+
+Under the hood:
+- `sim/run.cpp` gained `checkUiTextFit()`: every UI string is measured against
+  the box it must fit in, in both languages — 167 new assertions (203 → 370),
+  including a HUD column-collision set that references the same named layout
+  constants the renderer draws with.
+- The renderer now has a **missing-glyph counter**; the simulator renders every
+  screen in Chinese and asserts the counter is zero. A hardcoded Chinese string
+  in render code can no longer slip through unnoticed.
+- Glyph collection is now a single shared rule (`tools/cn_glyph_rule.py`) used by
+  both the generator and the CI checker: *every non-ASCII character in the
+  string table needs a glyph*. Previously both files each hardcoded the CJK
+  range, which is how the punctuation escaped both.
+- `./sim/sim --shots <dir>` renders all 11 screens in both languages (22 PPMs)
+  for visual review, and each shot repaints a clean base frame first.
+
 ## v0.4.2 — a title screen, Chinese, and the v0.5.0 list done early
 
 Every remaining item from the v0.5.0 suggestion list, folded into a patch bump on

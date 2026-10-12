@@ -8,6 +8,14 @@
 > in §7 below and `docs/FIXLOG-v0.4.2.md`. Still open: §2 human play-test reports,
 > §4 real-device photo, §5 extra maps, §6 star thresholds / palette pass, and the
 > §7 "needs a decision" item on splitting the translation unit.
+>
+> **Update 2026-10-12 (late): v0.4.3 was a UI audit rather than feature work** — the
+> user asked for a pass over every screen for overlapping text, and it found seven
+> defects (three of them invisible at normal zoom, e.g. a gold sign silently erased
+> every frame). The lasting output is a guard, not a patch: `checkUiTextFit()` plus a
+> missing-glyph counter (370 assertions, both languages) and `./sim/sim --shots` for
+> a 24-screen visual sweep. New standing rule: **no hardcoded Chinese in render
+> code, no bare x/y coordinates in UI layout**. See `docs/FIXLOG-v0.4.3.md`.
 
 Concrete, claimable work. Everything here is scoped so that one person can finish
 it in a session or two. If you want an item, open an issue saying so — first

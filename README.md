@@ -44,7 +44,7 @@ comes back.
 | Enemies | 9 kinds, incl. air (flies straight to your base) and healers |
 | Bosses | 9 abilities; up to two bosses per level, mid-bosses too |
 | Languages | English / 中文, switchable on the title screen (16×16 bitmap font, generated from source) |
-| RAM / Flash | 37,248 B (7.3%) / 833,808 B (26.5%) of a v0.4.2 build |
+| RAM / Flash | 37,256 B (7.3%) / 833,742 B (26.5%) of a v0.4.3 build |
 
 ## Screenshots
 
@@ -177,7 +177,7 @@ Two design rules that came out of this work:
 | Procedural SFX (three rotating gun variants) + mute preference | ✅ |
 | Rock (no-build) layers on L15/L16/L18/L20 | ✅ |
 | Title screen with language select (EN/中文) + first-run tutorial | ✅ |
-| PC simulator that plays all 20 levels with assertions | ✅ 203 checks, 0 failures |
+| PC simulator that plays all 20 levels with assertions | ✅ 370 checks, 0 failures (incl. UI text-fit + missing-glyph guards) |
 | **Endless mode** | ✅ clear L20 to enter; best wave remembered in NVS |
 | Difficulty of L14–L20 | ✅ quantified: all seven clear with 2× starting gold (3.3k–7.6k spare) — *economy-locked, not structurally broken*; data in `docs/PLAYTEST.md`. Human play-test reports still welcome. |
 | Save/resume of a game in progress | ❌ deliberately out of scope |
@@ -192,13 +192,15 @@ the rest are recorded for information.
 
 | Check | Result |
 |---|---|
-| `./sim/sim` (20 levels + map data + title/onboard/endless/SIEGE) | **203 checks passed, 0 failed** (v0.4.1: 178) |
+| `./sim/sim` (20 levels + map data + title/onboard/endless/SIEGE + UI fit) | **370 checks passed, 0 failed** (v0.4.2: 203) |
 | Gated levels cleared by the bot | L1–L4 and L11–L13, incl. L13 with 20/20 lives, 318 kills |
 | `./sim/sim --x2scan` (L14–L20 with 2× starting gold) | **all seven PASS** (3,296–7,619 gold spare) — the "hard" is economic, not structural; `docs/PLAYTEST.md` |
 | Coverage audit, all 20 maps (`tools/map_design.py`) | All PASS: minimum towers 5→18 ≤ 20, no dead path cells, three viable build orders |
-| `pio run -e tab5` (v0.4.2) | SUCCESS — RAM 37,248 B (7.3 %), Flash 833,808 B (26.5 %) (the final size-check step was blocked by the local sandbox; compile+link succeeded, `firmware.bin` rebuilt from the ELF with esptool — same as v0.4.1) |
-| Merged image (944,272 B) | built with `esptool merge-bin`; boot/partition/app headers verified identical to the v0.4.0 layout (offsets 0x2000 / 0x8000 / 0xe000 / 0x10000); sha256 `b5e70110…d5f5` |
-| Device flash + readback | **PASS** — flashed to a real Tab5 (ESP32-P4 rev 1.3) on 2026-10-12; bootloader / partition / boot_app0 / app regions read back **byte-identical** (app sha256 `682b739d…`); boot banner `=== PIXEL TOWER DEFENSE v0.4.1 | board=22 | 1280x720 ===`; the previous NVS progress (`unlock=0007 cleared=0003`) survived and loaded correctly (v0.4.1 image; the v0.4.2 flash is pending) |
+| `pio run -e tab5` (v0.4.3) | SUCCESS — RAM 37,256 B (7.3 %), Flash 833,742 B (26.5 %) (the final size-check step was blocked by the local sandbox; compile+link succeeded, `firmware.bin` rebuilt from the ELF with esptool — same as v0.4.1/v0.4.2) |
+| Merged image (944,048 B) | built with `esptool merge-bin`; boot/partition/app headers verified identical to the v0.4.0 layout (offsets 0x2000 / 0x8000 / 0xe000 / 0x10000); sha256 `d40d8013…12025` |
+| Device flash (v0.4.3 image) | **PASS** — written at 23:29 on 2026-10-12 to a real Tab5 (ESP32-P4 rev 1.3, `/dev/cu.usbmodem1101`). ⚠️ Two earlier `write-flash` runs (23:12, 23:18) reported `Hash of data verified` yet the boot banner came back as `DEEPFIRE v0.1.4` — a leftover image in the **second app partition** of `app3M_fat9M_16MB.csv` that `write-flash` never erases. **Always `esptool erase-flash` first, then confirm the banner is `=== PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===`** — a verified write does not prove your image is the one that boots. |
+| Full `read_flash` readback | Not obtained — long reads over the P4's USB-JTAG drop the stream at a fixed offset (`0x3E000`, 253952), and 64 KB segments with 6 retries each still failed. The first 64 KB **does** match the image exactly; the only difference is 141 bytes inside NVS `[0x9000,0x90dc)` (the old save, by design — see `BUILDING.md` §4). Same symptom occurred on v0.4.2, so it is a board limitation, not a regression. |
+| Every screen × both languages (`./sim/sim --shots dir`) | 22 PPMs rendered for review; each repaints a clean base frame so overlays are never composited on a stale screen |
 
 Bugs found and locked in by the simulator (now regression assertions): `int8_t`
 projectile speed truncation, coordinates not written back, target selection
@@ -209,7 +211,11 @@ same species of bug in the NVS save-dedup cache (a `uint16_t` cache against a
 `uint32_t` bitmap, writing flash every frame on the level-clear screen) — now
 covered by assertions in `sim/run.cpp` §15. v0.4.2 caught the same species again:
 three `uint8_t` truncation sites that would have silently disabled the SIEGE
-ability (bit 256) on hardware — §22.
+ability (bit 256) on hardware — §22. v0.4.3 was an audit of the UI itself: a
+label overlapping a button, a title rendered as 塔防 because the glyphs were
+never generated, a gold sign erased every frame by an over-wide clear rectangle,
+and a full-width punctuation class that dodged both the generator and the CI
+checker. All four now have geometry assertions (§25) or a missing-glyph counter.
 
 ## Repository layout
 

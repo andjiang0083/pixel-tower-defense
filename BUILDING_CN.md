@@ -24,11 +24,11 @@ cd pixel-tower-defense
 pio run -e tab5
 ```
 
-v0.4.2 的期望输出：
+v0.4.3 的期望输出：
 
 ```
-RAM:   [=         ]   7.3% (used 37248 bytes from 512000 bytes)
-Flash: [===       ]  26.5% (used 833808 bytes from 3145728 bytes)
+RAM:   [=         ]   7.3% (used 37256 bytes from 512000 bytes)
+Flash: [===       ]  26.5% (used 833742 bytes from 3145728 bytes)
 ```
 
 `platformio.ini` 里有几项**别顺手"整理"掉**：
@@ -78,6 +78,14 @@ esptool --chip esp32p4 --port "/dev/cu.usbmodem2101" --baud 1500000 \
    刷完就是黑屏。
 2. **PIO 实际用 `--flash-mode dio`**，尽管 `platformio.ini` 里写的是 `qio` ——
    board 定义把它覆盖了。不要因为"ini 里写的是 qio"就用 qio 去合镜像。
+3. **刷机前先擦整片**（v0.4.3 实测踩坑）。`write-flash` **只写镜像覆盖的
+   范围**，且跳过全 `0xFF` 的块，**不会擦掉别的 app 分区里的旧固件**。本项目的
+   分区表是 `app3M_fat9M_16MB.csv`，存在第二个 app 分区；如果那块板子以前烧过
+   别的项目，bootloader 可能照旧从残留的那个分区启动——你看到的"花屏/蓝屏"
+   其实是**别人的程序**，和当前源码无关。
+   **怎么判断**：`pio device monitor` 看启动横幅。本项目横幅是
+   `=== PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===`。
+   横幅对不上 → 刷进去的根本不是这份固件 → 先 `esptool erase_flash` 再写。
 
 ## 4. 合并镜像（给 M5Burner / esptool 从 0x0 刷）
 
@@ -88,9 +96,9 @@ PlatformIO 12+ 已经直接产出这个文件：
 
 ```bash
 cp .pio/build/tab5/firmware.factory.bin \
-   releases/pixel-tower-defense-v0.4.2-tab5-merged.bin
-shasum -a 256 releases/pixel-tower-defense-v0.4.2-tab5-merged.bin \
-  > releases/pixel-tower-defense-v0.4.2-tab5-merged.bin.sha256
+   releases/pixel-tower-defense-v0.4.3-tab5-merged.bin
+shasum -a 256 releases/pixel-tower-defense-v0.4.3-tab5-merged.bin \
+  > releases/pixel-tower-defense-v0.4.3-tab5-merged.bin.sha256
 ```
 
 发布前先验各段位置（这一步就是用来拦"黑屏"的）：
@@ -98,7 +106,7 @@ shasum -a 256 releases/pixel-tower-defense-v0.4.2-tab5-merged.bin \
 ```bash
 python3 - <<'PY'
 import struct, pathlib
-b = pathlib.Path('releases/pixel-tower-defense-v0.4.2-tab5-merged.bin').read_bytes()
+b = pathlib.Path('releases/pixel-tower-defense-v0.4.3-tab5-merged.bin').read_bytes()
 def hdr(off):
     return dict(magic=hex(b[off]), nseg=b[off+1], mode=b[off+2],
                 size_freq=hex(b[off+3]), entry=hex(struct.unpack_from('<I', b, off+4)[0]))
@@ -110,26 +118,29 @@ print('app        @0x10000', hdr(0x10000))  # magic 0xe9，mode 2 = DIO
 PY
 ```
 
-v0.4.2 镜像的期望输出：
+v0.4.3 镜像的期望输出：
 
 ```
-len 944272
+len 944048
 bootloader @0x2000 {'magic': '0xe9', 'nseg': 3, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff29ed0'}
 partitions @0x8000 aa50
 boot_app0  @0xe000 0x1
 app        @0x10000 {'magic': '0xe9', 'nseg': 7, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff00c6a'}
 ```
-sha256 `b5e701102b23d22321671cb6e642f6231d2e831efe50200591448da94884d5f5`
+sha256 `d40d80130b79b8b84ba32bafa48c533b70eab51629c3ae8da223809ff5512025`
 
 真要手搓（工程不产出 `factory.bin`，或编译后的 size 检查步骤被环境拦截——
-v0.4.1 和 v0.4.2 都是在编译+链接成功后被拦截，按下面两步搓的。注意 esptool 用
-PlatformIO penv 自带的那个：`~/.platformio/penv/bin/python -m esptool ...`）：
+v0.4.1、v0.4.2、v0.4.3 都是在编译+链接成功后被拦截，按下面两步搓的）。
+
+⚠️ 必须用 `python -m esptool`（不是直接执行 penv 里的 `esptool` 脚本）：
+penv 的 esptool 是 editable 安装，直接跑脚本会报 `No module named 'rich_click'`，
+而 `-m` 走 finder 能正常加载。`merge-bin` 的 `-o` 直接写最终交付路径：
 
 ```bash
-python3 ~/.platformio/penv/bin/esptool --chip esp32p4 elf2image \
+~/.platformio/penv/bin/python -m esptool --chip esp32p4 elf2image \
   --flash_mode dio --flash_freq 80m --flash_size 16MB \
   -o .pio/build/tab5/firmware.bin .pio/build/tab5/firmware.elf
-python3 ~/.platformio/penv/bin/esptool --chip esp32p4 merge-bin \
+~/.platformio/penv/bin/python -m esptool --chip esp32p4 merge-bin \
   --output merged.bin --flash-mode dio --flash-freq 80m --flash-size 16MB \
   0x2000  .pio/build/tab5/bootloader.bin \
   0x8000  .pio/build/tab5/partitions.bin \

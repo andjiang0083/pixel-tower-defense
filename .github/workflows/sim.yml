@@ -37,10 +37,12 @@ jobs:
       # v0.4.2：中文字库。为什么不是字节级漂移：点阵由 Pillow+FreeType 光栅化外部
       # 字体得到，字体/FreeType/Pillow 任一不同（换平台、换字体、升级依赖）都会
       # 得到不同的字节——实测同一台机器上 STHeiti 与 Hiragino 渲染结果即不同，
-      # v0.4.2 首次推送时 CI 就是这样红的。所以这里查跨平台恒成立的语义不变量：
-      # 字库必须精确覆盖 i18n.h 的汉字集（增删中文文案忘重跑 → 红）。
+      # v0.4.2 首次推送时 CI 就是这样红的。所以这里查跨平台恒成立的语义不变量。
+      # v0.4.3 收紧：要求"STR_CN 表内每个非 ASCII 字符都有字形"——旧规则只认
+      # U+4E00..9FFF，全角标点（"：" "！"）因此同时躲过生成器与检查器。
+      # 收字规则现在是 tools/cn_glyph_rule.py 单一真源，生成器与检查器共用。
       # 字节一致性是维护机纪律：改 i18n.h 中文 → 用同一字体重跑 gen_cnfont.py
-      # → git diff 必须为空（纯 stdlib，无需 Pillow）。
-      - name: cn_font.h must cover every CJK char in i18n.h
+      # → git diff 必须为空（本检查纯 stdlib，无需 Pillow）。
+      - name: cn_font.h must cover every non-ASCII char in i18n.h
         run: |
           python3 tools/check_cnfont.py

@@ -25,11 +25,11 @@ cd pixel-tower-defense
 pio run -e tab5
 ```
 
-Expected on a v0.4.2 tree:
+Expected on a v0.4.3 tree:
 
 ```
-RAM:   [=         ]   7.3% (used 37248 bytes from 512000 bytes)
-Flash: [===       ]  26.5% (used 833808 bytes from 3145728 bytes)
+RAM:   [=         ]   7.3% (used 37256 bytes from 512000 bytes)
+Flash: [===       ]  26.5% (used 833742 bytes from 3145728 bytes)
 ```
 
 `platformio.ini` pins the important things; do not "clean them up":
@@ -88,6 +88,14 @@ Two things to notice, because both are classic Tab5 mistakes:
 2. **PIO flashes with `--flash-mode dio`** even though `platformio.ini` says `qio` —
    the board definition overrides it. Never build a merged image with `qio` "because
    the ini says so".
+3. **擦除整片再写**（v0.4.3 踩坑）。`write-flash` 只写镜像覆盖的范围、
+   并跳过全 `0xFF` 的块，**不会擦掉其他 app 分区里的旧固件**。如果这块板
+   之前烧过别的项目（本项目是 `app3M_fat9M_16MB.csv`，存在第二个 app 分区），
+   bootloader 可能照样从残留的那个 app 分区启动——于是你看到的"花屏/蓝屏"
+   其实是**别人的程序**，跟当前源码毫无关系。
+   **判断方法**：`pio device monitor` 看启动横幅。本项目的横幅是
+   `=== PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===`。
+   横幅不对 → 刷的根本不是你这份固件 → 先 `esptool erase_flash` 再写。
 
 ## 4. A merged image (for M5Burner / esptool at offset 0x0)
 
@@ -98,9 +106,9 @@ PlatformIO 12+ already produces exactly that file:
 
 ```bash
 cp .pio/build/tab5/firmware.factory.bin \
-   releases/pixel-tower-defense-v0.4.2-tab5-merged.bin
-shasum -a 256 releases/pixel-tower-defense-v0.4.2-tab5-merged.bin \
-  > releases/pixel-tower-defense-v0.4.2-tab5-merged.bin.sha256
+   releases/pixel-tower-defense-v0.4.3-tab5-merged.bin
+shasum -a 256 releases/pixel-tower-defense-v0.4.3-tab5-merged.bin \
+  > releases/pixel-tower-defense-v0.4.3-tab5-merged.bin.sha256
 ```
 
 Verify the segments before shipping (this is the check that catches a black screen):
@@ -108,7 +116,7 @@ Verify the segments before shipping (this is the check that catches a black scre
 ```bash
 python3 - <<'PY'
 import struct, pathlib
-b = pathlib.Path('releases/pixel-tower-defense-v0.4.2-tab5-merged.bin').read_bytes()
+b = pathlib.Path('releases/pixel-tower-defense-v0.4.3-tab5-merged.bin').read_bytes()
 def hdr(off):
     return dict(magic=hex(b[off]), nseg=b[off+1], mode=b[off+2],
                 size_freq=hex(b[off+3]), entry=hex(struct.unpack_from('<I', b, off+4)[0]))
@@ -120,26 +128,29 @@ print('app        @0x10000', hdr(0x10000))  # magic 0xe9, mode 2 = DIO
 PY
 ```
 
-Expected output for the v0.4.2 image:
+Expected output for the v0.4.3 image:
 
 ```
-len 944272
+len 944048
 bootloader @0x2000 {'magic': '0xe9', 'nseg': 3, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff29ed0'}
 partitions @0x8000 aa50
 boot_app0  @0xe000 0x1
 app        @0x10000 {'magic': '0xe9', 'nseg': 7, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff00c6a'}
 ```
-sha256 `b5e701102b23d22321671cb6e642f6231d2e831efe50200591448da94884d5f5`
+sha256 `d40d80130b79b8b84ba32bafa48c533b70eab51629c3ae8da223809ff5512025`
 
 If you ever need to build it by hand (a project that does not emit `factory.bin`,
-or a build where the post-size step is blocked — v0.4.1 **and v0.4.2** were merged
-exactly this way after the compile+link had already succeeded):
+or a build where the post-size step is blocked — v0.4.1, **v0.4.2 and v0.4.3** were
+merged exactly this way after the compile+link had already succeeded):
 
 ```bash
-python3 ~/.platformio/penv/bin/esptool --chip esp32p4 elf2image \
+# Use `python -m esptool`, not the penv `esptool` script: penv's esptool is an
+# editable install and running the script directly fails with
+# "No module named 'rich_click'", while -m loads it through the finder.
+~/.platformio/penv/bin/python -m esptool --chip esp32p4 elf2image \
   --flash_mode dio --flash_freq 80m --flash_size 16MB \
   -o .pio/build/tab5/firmware.bin .pio/build/tab5/firmware.elf
-python3 ~/.platformio/penv/bin/esptool --chip esp32p4 merge-bin \
+~/.platformio/penv/bin/python -m esptool --chip esp32p4 merge-bin \
   --output merged.bin --flash-mode dio --flash-freq 80m --flash-size 16MB \
   0x2000  .pio/build/tab5/bootloader.bin \
   0x8000  .pio/build/tab5/partitions.bin \

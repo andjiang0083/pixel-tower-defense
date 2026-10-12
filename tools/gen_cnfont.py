@@ -18,6 +18,8 @@
 import os, re, sys, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from cn_glyph_rule import collect_from_i18n          # 收字规则单一真源（与 CI 检查器共用）
 FONT_CANDIDATES = [
     "/System/Library/Fonts/STHeiti Medium.ttc",                    # macOS
     "/System/Library/Fonts/Hiragino Sans GB.ttc",                  # macOS 备选
@@ -33,17 +35,13 @@ SZ = 16                       # 点阵边长
 BYTES_PER_GLYPH = SZ * 2      # 每行 2 字节（bit15 = 最左列）
 
 def collect_chars():
-    """从 i18n.h 的 STR_CN 表收集中文字符（去重、排序）。"""
-    text = (ROOT / "src" / "i18n.h").read_text(encoding="utf-8")
-    m = re.search(r"STR_CN\[STR_COUNT\]\s*=\s*\{(.*?)\};", text, re.S)
-    if not m:
-        sys.exit("FATAL: STR_CN table not found in src/i18n.h")
-    chars = set()
-    for ch in m.group(1):
-        if "\u4e00" <= ch <= "\u9fff":
-            chars.add(ch)
-    # ASCII 数字/标点直接走 5x7 点阵，不收；仅汉字进字库
-    return sorted(chars)
+    """收字范围 = i18n.h STR_CN 表里所有非 ASCII 字符。
+
+    v0.4.3：此前只收 U+4E00..9FFF 汉字，全角标点"："和"！"因此从未进字库，
+    渲染时被 px_cnChar 静默跳过（中文标题/提示直接缺笔画）。规则现在是
+    "非 ASCII 都要字形"，与 cn_glyph_rule.py / check_cnfont.py 同源。
+    """
+    return collect_from_i18n(ROOT)
 
 def render(ch):
     from PIL import Image, ImageDraw, ImageFont

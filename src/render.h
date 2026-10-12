@@ -27,10 +27,16 @@ static inline void resetRenderCaches(void) {
 }
 
 // v0.4.2：无尽模式入口按钮几何（drawLevelClear 画 / actions.h 命中，唯一真源）
+// v0.4.3：Y 从建造栏反推——旧值硬编码 590 让按钮底边(654)压进建造栏(640..720)，
+// "SURVIVE 250 WAVES" 那行正好被槽位切掉（真机同款：renderFrame 先画建造栏、
+// updateOverlays 后画通关面板，按钮画在槽位之上）。任何一边几何改动都不会再撞。
+// 通关面板底边 = MAP_TOP + (SCREEN_H-MAP_TOP-320)/2 + 320 = 540，按钮区在 540..640。
 #define ENDLESS_BTN_X 380
-#define ENDLESS_BTN_Y 590
+#define ENDLESS_BTN_Y (BUILD_BAR_Y - ENDLESS_BTN_H - 16)   // = 560，距槽位 16px、距面板 20px
 #define ENDLESS_BTN_W 280
 #define ENDLESS_BTN_H 64
+#define CLEAR_PANEL_H 320                                   // drawLevelClear 面板高（断言用）
+#define CLEAR_PANEL_Y (MAP_TOP + (SCREEN_H - MAP_TOP - CLEAR_PANEL_H) / 2)
 
 // v0.4.2 前向声明（定义在文件末：renderFrame 在中间要调用）
 static void drawSiege(M5GFX* g);
@@ -70,6 +76,33 @@ static void drawCellBase(M5GFX* g, int col, int row) {
   g->fillRect(x, y, 1, CELL, C_GRASS_EDGE);          // 网格线（竖）
 }
 
+// ── HUD 横向布局（v0.4.3：从散落的硬编码 x 收敛为命名常量）────────
+// 起因：三处硬编码 x 互相踩雷——
+//   ① SIEGE 警示条的清空框 fillRect(300,14,180,..) 覆盖到 480，把静态 HUD 的
+//      "$"(x=420) 每帧擦掉：v0.4.2 起金币符号在真机与仿真里都消失（K金变没有）。
+//   ② 无尽模式的 BEST 数字从 770 起画、伸到 ~813，压住 WAVE 标签(x=800)——
+//      截图放大可见 "42" 叠在 "W" 上。
+//   ③ 静态标签原本在 drawBackground 与射程框重画两处复制，改一处必漏一处。
+// 现在：布局是命名常量（仿真断言引用同一批宏），标签只有一个绘制函数。
+#define HUD_HEART_X     16      // ♥ 心跳图标
+#define HUD_HP_LBL_X    52      // "生命" / "HP"
+#define HUD_HP_NUM_X    204     // 生命数字（擦除框 196..260）
+#define HUD_SIEGE_X     300     // SIEGE 警示条：HP 数字与 $ 之间
+#define HUD_SIEGE_W     112     // 放得下 "BUILD ZONE LOCKED"(101px)；右缘 412 < $ (420)
+#define HUD_DOLLAR_X    420     // "$" 金币符号
+#define HUD_GOLD_NUM_X  500     // 金币数字（擦除框 492..626）
+#define HUD_BEST_X      640     // 无尽 BEST（GOLD 框 626 之后、WAVE 标签 800 之前）
+#define HUD_WAVE_LBL_X  800     // "波次" / "WAVE"
+#define HUD_WAVE_NUM_X  900     // 波次数字（擦除框 896..1030）
+
+// HUD 静态标签（♥ / HP / $ / WAVE）——只画一次，两处重画共用同一份
+static void drawHudLabels(M5GFX* g) {
+  px_char(g, HUD_HEART_X, 24, '\x01', C_BAD, 4);                 // ♥
+  px_text(g, HUD_HP_LBL_X, 20, TR(STR_HP),     C_TEXT_DIM, 3);
+  px_text(g, HUD_DOLLAR_X, 20, "$",            C_GOLD,     3);
+  px_text(g, HUD_WAVE_LBL_X, 20, TR(STR_WAVE), C_TEXT_DIM, 3);
+}
+
 // ── 静态背景：整张地图 + HUD 底板，只在开局 / 重开时画一次 ────────
 static void drawBackground(M5GFX* g) {
   g->fillScreen(C_BG);
@@ -96,10 +129,7 @@ static void drawBackground(M5GFX* g) {
   }
 
   // HUD 静态标签：♥ / $ / WAVE（数字每帧按需刷新）+ 关卡名
-  px_char(g, 16, 24, '\x01', C_BAD, 4);                       // ♥
-  px_text(g, 52, 20, TR(STR_HP),   C_TEXT_DIM, 3);
-  px_text(g, 420, 20, "$",    C_GOLD,     3);
-  px_text(g, 800, 20, TR(STR_WAVE), C_TEXT_DIM, 3);
+  drawHudLabels(g);
 }
 
 // ── 建造栏（v0.1.2）：槽位 = 塔种图标 + 名称 + 价格 ───────────────
@@ -176,32 +206,35 @@ static void drawBuildBar(M5GFX* g) {
 static void drawHud(M5GFX* g) {
   char buf[16];
 
-  // HP：数字前留心跳图标位（x=200）
-  g->fillRect(196, 14, 64, FONT_H * 3 + 6, C_UI_BG);
+  // HP：数字前留心跳图标位
+  g->fillRect(HUD_HP_NUM_X - 8, 14, 64, FONT_H * 3 + 6, C_UI_BG);
   px_itoa(g_w.lives, buf);
-  px_text(g, 204, 20, buf, g_w.lives <= 5 ? C_HP_LOW : C_TEXT, 3);
+  px_text(g, HUD_HP_NUM_X, 20, buf, g_w.lives <= 5 ? C_HP_LOW : C_TEXT, 3);
 
   // GOLD
-  g->fillRect(492, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
+  g->fillRect(HUD_GOLD_NUM_X - 8, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
   px_itoa(g_w.gold, buf);
-  px_text(g, 500, 20, buf, C_GOLD, 3);
+  px_text(g, HUD_GOLD_NUM_X, 20, buf, C_GOLD, 3);
 
-  // v0.4.2：无尽模式在 $ 与 WAVE 之间显示历史最高波次（NVS 持久）
+  // v0.4.2：无尽模式显示历史最高波次（NVS 持久）
+  // v0.4.3：x 从 770 移到 HUD_BEST_X(640)——旧位置让数字伸到 ~813，
+  // 压住静态的 WAVE 标签(800)，截图里 "42" 叠在 "W" 上。
   if (g_w.endless) {
-    px_text(g, 770, 26, TR(STR_BEST), C_TEXT_DIM, 1);
+    px_text(g, HUD_BEST_X, 26, TR(STR_BEST), C_TEXT_DIM, 1);
     px_itoa(g_endBest, buf);
-    px_text(g, 770 + px_textWidth(TR(STR_BEST), 1) + 6, 26, buf, C_STAR, 1);
+    px_text(g, HUD_BEST_X + px_textWidth(TR(STR_BEST), 1) + 6, 26, buf, C_STAR, 1);
   }
 
   // WAVE x/N（本关总波数一目了然；无尽模式总波数走 lvWaves()=250）
-  g->fillRect(896, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
+  g->fillRect(HUD_WAVE_NUM_X - 4, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
   char wbuf[24]; px_itoa(g_w.wave, wbuf);
   strcat(wbuf, "/"); char tbuf[8]; px_itoa(lvWaves(), tbuf); strcat(wbuf, tbuf);
-  px_text(g, 900, 20, wbuf, C_TEXT, 3);
+  px_text(g, HUD_WAVE_NUM_X, 20, wbuf, C_TEXT, 3);
 
   // v0.4.2：SIEGE 警示条（HP 与 $ 之间的空档；常态清空，封锁中画红字）
-  g->fillRect(300, 14, 180, FONT_H * 3 + 6, C_UI_BG);
-  if (g_w.siegeMs > 0) px_text(g, 300, 26, TR(STR_SIEGE_WARN), C_BAD, 1);
+  // v0.4.3：宽度 180→HUD_SIEGE_W(112)。旧框铺到 480，把静态 "$"(420) 擦了。
+  g->fillRect(HUD_SIEGE_X, 14, HUD_SIEGE_W, FONT_H * 3 + 6, C_UI_BG);
+  if (g_w.siegeMs > 0) px_text(g, HUD_SIEGE_X, 26, TR(STR_SIEGE_WARN), C_BAD, 1);
 }
 
 // ── NEXT WAVE 按钮（v0.2.1：波间变倒计时条）───────────────────────
@@ -488,10 +521,7 @@ static void eraseRangeBox(M5GFX* g) {
     drawHud(g); g_w.hudDirty = false;                       // 数字补回
     drawButton(g, s_lastBtn >= 0 ? (bool)s_lastBtn : true); // NEXT WAVE / 倒计时槽
     if (g_w.state == ST_READY && g_w.wave > 0) drawWaveCountdown(g);
-    px_char(g, 16, 24, '\x01', C_BAD, 4);                  // HUD 静态图标
-    px_text(g, 52, 20, TR(STR_HP),   C_TEXT_DIM, 3);
-    px_text(g, 420, 20, "$",    C_GOLD,     3);
-    px_text(g, 800, 20, TR(STR_WAVE), C_TEXT_DIM, 3);
+    drawHudLabels(g);                                      // HUD 静态标签（共用）
   }
   if (g_rbY1 >= BUILD_BAR_Y) {
     g->fillRect(g_rbX0, BUILD_BAR_Y, g_rbX1 - g_rbX0 + 1, SCREEN_H - BUILD_BAR_Y, C_UI_BG);
@@ -741,15 +771,6 @@ static void drawGameOver(M5GFX* g) {
   px_textCenter(g, SCREEN_W / 2, by + 230, TR(STR_TAP_RESTART), C_BTN_HI, 3);
 }
 
-// ── 开局提示（第一次进游戏时告诉玩家怎么玩）──────────────────────
-static void drawReadyHint(M5GFX* g) {
-  const char* s = TR(STR_READY_HINT);
-  const int w = px_textWidth(s, 2), h = FONT_H * 2;
-  const int x = (SCREEN_W - w) / 2, y = SCREEN_H - h - 14;
-  g->fillRect(x - 8, y - 6, w + 16, h + 12, C_UI_BG);
-  px_textCenter(g, SCREEN_W / 2, y, s, C_TEXT_DIM, 2);
-}
-
 // ── 星星（v0.3.0）：5×7 像素五角星的矩形近似 —— 三块菱形拼出尖角 ──
 // size=1 → 约 20px；size=2 → 40px。纯 fillRect，无字体依赖。
 static void drawStar(M5GFX* g, int cx, int cy, int size, uint16_t c) {
@@ -843,8 +864,8 @@ static void drawLevelClear(M5GFX* g) {
   for (int y = MAP_TOP; y < SCREEN_H; y += 8)
     for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
 
-  const int bw = 760, bh = 320;
-  const int bx = (SCREEN_W - bw) / 2, by = MAP_TOP + (SCREEN_H - MAP_TOP - bh) / 2;
+  const int bw = 760, bh = CLEAR_PANEL_H;
+  const int bx = (SCREEN_W - bw) / 2, by = CLEAR_PANEL_Y;
   g->fillRect(bx, by, bw, bh, C_UI_BG);
   g->drawRect(bx, by, bw, bh, C_GOLD);
   g->drawRect(bx + 3, by + 3, bw - 6, bh - 6, C_GOLD);
@@ -888,6 +909,9 @@ static void drawLevelClear(M5GFX* g) {
 #define LANG_EN_X   430
 #define LANG_CN_X   650
 #define LANG_BTN_W  200
+// v0.4.3：LANGUAGE/语言 标签居中在按钮组上方。y 命名化，仿真断言守着
+// "标签底边（含 16px 中文点阵）不得贴到按钮顶边"。
+#define TITLE_LANG_LBL_Y 302
 
 // v0.4.2：无尽模式入口按钮（L10 通关画面面板下方；actions 命中共用）
 // （几何宏已前置到文件头，供 drawLevelClear 使用）
@@ -925,11 +949,13 @@ static void drawTitle(M5GFX* g) {
                                   C_TEXT, C_ENEMY_BOSS, C_TOWER_CAN, C_TOWER_LASER };
   drawRainbow(g, SCREEN_W / 2, 110, "PIXEL TOWER", 7, RC, 8);
   drawRainbow(g, SCREEN_W / 2, 180, "DEFENSE", 7, RC, 8);
-  if (langCN()) px_textCenter(g, SCREEN_W / 2, 252, "像素塔防", C_GOLD, 2);
+  // v0.4.3：中文标题必须走 TR(STR_TITLE_CN)——硬编码中文不进 STR_CN 表，
+  // gen_cnfont 就收不到字（v0.4.2 曾因此缺 3 字）。y=245：与版本号留 11px。
+  if (langCN()) px_textCenter(g, SCREEN_W / 2, 245, TR(STR_TITLE_CN), C_GOLD, 2);
 
-  // 版本号（金色，v0.4.2 起每次发版手改这里 + banner + publish.yaml）
-  char vb[24]; strcpy(vb, "v0.4.2");
-  px_textCenter(g, SCREEN_W / 2, 285, vb, C_GOLD, 3);
+  // 版本号（金色，v0.4.3 起每次发版手改这里 + banner + publish.yaml）
+  char vb[24]; strcpy(vb, "v0.4.3");
+  px_textCenter(g, SCREEN_W / 2, 272, vb, C_GOLD, 3);
 
   // 语言按钮：当前语言金色高亮
   for (int i = 0; i < LANG_COUNT; ++i) {
@@ -938,11 +964,16 @@ static void drawTitle(M5GFX* g) {
     g->fillRect(bx, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, C_SLOT_BG);
     g->drawRect(bx, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, cur ? C_GOLD : C_GRASS_EDGE);
     if (cur) g->drawRect(bx + 3, LANG_BTN_Y + 3, LANG_BTN_W - 6, LANG_BTN_H - 6, C_GOLD);
-    const char* label = (i == LANG_EN) ? "ENGLISH" : "中文";
+    // v0.4.3：按钮标签走 TR——显示"目标语言"名（EN 模式：ENGLISH/中文；
+    // CN 模式：英文/中文）。硬编码会让字库漏收（见 i18n.h 头注教训）。
+    const char* label = (i == LANG_EN) ? TR(STR_LANG_EN) : TR(STR_LANG_CN);
     px_textCenter(g, bx + LANG_BTN_W / 2, LANG_BTN_Y + 20, label,
                   cur ? C_TEXT : C_TEXT_DIM, 2);
   }
-  px_text(g, 360, LANG_BTN_Y + 20, TR(STR_LANG), C_TEXT_DIM, 2);
+  // v0.4.3：LANGUAGE 标签从"按钮左侧硬编码 x=360"改为**按钮组上方居中**
+  // ——旧版 8 字符×12px=94px 伸到 456，压进 ENGLISH 按钮（430）26px。
+  // 居中放置同时解决"按钮位置随语言宽度跳动"（固定左缘的方案会跳）。
+  px_textCenter(g, SCREEN_W / 2, TITLE_LANG_LBL_Y, TR(STR_LANG), C_TEXT_DIM, 2);
 
   // 装饰带：几座塔剪影 + 小兵 + 地面线（全部矩形，复用塔的配色语言）
   const int gy = 500;
@@ -967,9 +998,16 @@ static void drawTitle(M5GFX* g) {
                   g->fillRect(ex + 16, ey - 6, 6, 6, C_ENEMY_BOSS); }
   }
 
-  // 开始提示（闪烁感：双色叠字）
+  // 开始提示。**只画一次**。
+  // ⚠️ v0.4.3 修过这里，两件事都别再犯：
+  //   ① 原来同一条文字画了两遍做"双色叠字/描边"，但暗层是后画的且只左移 3px
+  //      （字宽 15px）→ 整个字身被盖成暗色、只在右缘漏 3px，玩家看到的是
+  //      "字被画了两次、错位重叠"。
+  //   ② 把顺序翻过来（暗在下、亮在上）**也不行**：偏移 3px ≈ 英文笔画宽 3px，
+  //      亮层笔画正好落进暗层笔画的缝隙，两层互相穿插，依然是糊的重影。
+  //      5x7 字模放大到 15px 后，笔画间距本来就 3px 量级——**这个尺寸下没有
+  //      能做描边的余量**。星空是深底，亮色本身对比度已经够，不需要描边。
   px_textCenter(g, SCREEN_W / 2, 580, TR(STR_TITLE_HINT), C_BTN_HI, 3);
-  px_textCenter(g, SCREEN_W / 2 - 3, 580, TR(STR_TITLE_HINT), C_TEXT_DIM, 3);
 
   // 底部：仓库地址（开源项目惯例）
   px_textCenter(g, SCREEN_W / 2, SCREEN_H - 26,

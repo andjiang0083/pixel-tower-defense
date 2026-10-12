@@ -37,13 +37,23 @@ static inline void px_char(M5GFX* g, int x, int y, char ch, uint16_t c, int scal
 
 // ── v0.4.2 中文路径：UTF-8 3 字节序列 → 16x16 点阵 ─────────────────
 // 线性扫小字表（<200 字，每字 3 字节比较；界面文本短，成本可忽略）
+// v0.4.3：缺字计数。v0.4.2 的 drawTitle 硬编码"像素塔防"绕过 STR_CN 表，
+// gen_cnfont 没收这些字 → 中文开机标题缺 3 字，px_cnChar 静默跳过，
+// 编译器和 CI 都不响。现在每次跳过累加本计数器；仿真渲染完全部界面后
+// 断言 s_cnMissing == 0（sim/run.cpp checkUiTextFit）——固件零打印成本
+// （一个 int 自增），换"任何漏收字都会在 CI 红"。
+static int s_cnMissing = 0;
 static inline const uint8_t* cnGlyphRows(const char* s) {
   const uint8_t* p = (const uint8_t*)s;
   for (int i = 0; i < CN_GLYPH_COUNT; ++i) {
     const uint8_t* q = (const uint8_t*)CN_GLYPHS[i].utf8;
     if (p[0] == q[0] && p[1] == q[1] && p[2] == q[2]) return CN_GLYPHS[i].rows;
   }
-  return nullptr;                          // 未收字：按空格跳过（gen_cnfont 会收全）
+  ++s_cnMissing;                        // 未收字：计数（仿真断言为 0）
+#ifdef PTD_DEBUG_MISSING_GLYPH
+  fprintf(stderr, "MISSING GLYPH: %02X%02X%02X\n", p[0], p[1], p[2]);
+#endif
+  return nullptr;                       // 渲染上按空格跳过（不能崩）
 }
 
 // 与 px_char 同款 RLE 合并（每行 16 位 = 两字节拼）
