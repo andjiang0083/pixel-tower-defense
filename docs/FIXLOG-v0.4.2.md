@@ -63,7 +63,7 @@ uint8_t 截断真 bug + 1 个持续/节拍混淆设计缺陷。
 
 - `gen_cnfont.py` 首跑 `ModuleNotFoundError: No module named 'PIL'`（系统 python3 无 Pillow）。
 - **修法**：生成器加多平台字体候选列表（macOS STHeiti/Hiragino、Linux Noto/文泉驿）+
-  `CN_FONT` 环境变量覆盖；本地跑改用隔离 venv；CI 里 `pip install Pillow`。
+  `CN_FONT` 环境变量覆盖；本地跑改用隔离 venv（Pillow 只在生成时需要，固件与 CI 都不需要）。
 - 产出：从 `i18n.h` 的 STR_CN 表自动收 92 个字，渲染 16×16 二值化，`src/cn_font.h` 17.7KB，
   UTF-8 转义保证 ASCII 安全。**零素材铁律保持**：中文是生成的点阵，不是字体文件。
 
@@ -90,19 +90,37 @@ uint8_t 截断真 bug + 1 个持续/节拍混淆设计缺陷。
 - **结论：这七关是"经济卡死"不是"输出结构性问题"**——不需要削弱数值；真人攻略是"敢花钱"
   （bot 的保守建塔留了 3k+ 余量）。同时 bot 的结余区间说明它仍偏保守，可作为后续标尺。
 
+### P2-4　CI 的字库漂移检查从原理上就立不住（首推即红）✅已修
+
+- **现象**：v0.4.2 首次 push 后 CI 唯一失败项 = `cn_font.h must match tools/gen_cnfont.py`。
+- **根因**：点阵是 Pillow+FreeType **光栅化外部字体**的产物。提交版用 macOS STHeiti 渲染，
+  CI 的 ubuntu-latest 用 Noto CJK——不同字体渲染出不同字节，`git diff --exit-code` 必红。
+  本地实测：同一台机器上换 Hiragino 渲染，输出即与提交版不同。**字节级漂移检查只对
+  确定性生成物（layout/font/sfx，纯 stdlib）成立**；依赖系统字体的生成物不可能跨平台字节一致。
+- **修法**：CI 改查**语义不变量**——新增 `tools/check_cnfont.py`（纯 stdlib）：字库收录的
+  字符集必须**精确等于** `i18n.h` STR_CN 表的汉字集（集合比较，一进一出的替换也会被抓）、
+  每字形 16 行×2 字节、无空字形。"改中文文案忘重跑生成器"照样红（覆盖不全）。
+  字节一致性降级为**维护机纪律**（同字体重跑 + git diff 为空），写进生成器头注。
+- **顺带修了检查器自己的 bug**：第一版只比数量不比集合，"换字形"（一进一出）漏过；
+  负面测试（删字形/换字形）现在都有回归。
+- **回归**：`python3 tools/check_cnfont.py` 三场景（正/删/换）实测通过；CI 复跑见 §三。
+
 ## 三、验证（全部真实执行过）
 
 | 检查 | 结果 |
 |---|---|
 | `g++ -std=c++17 -O2 -I sim/compat -I src sim/run.cpp -o sim/sim && ./sim/sim` | **203 passed, 0 failed**（v0.4.1 基线 178；新增 §19–§24 共 25 条） |
 | `python3 tools/layout.py; echo GEN_EXIT=$?` | `GEN_EXIT=0`（新增 SIEGE 三常量 + L11 ability=268） |
-| `python3 tools/gen_cnfont.py`（隔离 venv，Pillow） | 输出 `src/cn_font.h` 与入库一致；CI 新增漂移检查步骤 |
+| `python3 tools/gen_cnfont.py`（隔离 venv，Pillow） | 输出 `src/cn_font.h` 与入库一致（同字体下字节级复现）；CI 改查语义覆盖（见 P2-4） |
 | `python3 tools/gen_font.py && python3 tools/gen_sfx.py` | 输出与入库逐字节一致（新增 GUN2/GUN3 音色已入库） |
 | 门禁关 bot | L1–L4 + L11–L13 仍全通；非门禁关失败集合与 v0.4.0 **完全一致**（分兵升级未改变难度读数） |
 | `./sim/sim --x2scan` | L14–L20 双倍金币**全部 PASS**（详见 PLAYTEST.md） |
 | 依赖资产存档 | `~/esp32/vendor/` 两个 tarball（esp32-core-3.3.10.zip / arduino-libs-20260519）已存，sha256 记入 BUILDING.md/.CN |
 | `pio run -e tab5` | 编译+链接成功：RAM 37,248 B（7.3%）/ Flash 833,808 B（26.5%）（v0.4.1：37,016/819,586；+1,232 B RAM ≈ abNextMs[9] + siege 状态，+14,222 B Flash ≈ cn_font.h 17.7KB + i18n 表 + GUN2/GUN3 PCM）。最后一步 size 检查被本机沙箱拦（与 v0.4.1 同型），firmware.bin 由 esptool elf2image（DIO@80m）从 ELF 重建 |
 | 合并镜像 | `releases/pixel-tower-defense-v0.4.2-tab5-merged.bin`，944,272 B，sha256 `b5e70110…d5f5`；四段头与 v0.4.0/v0.4.1 布局逐字节一致（boot e903024f/mode2 / parts aa50 / boot_app0 0x01 / app e907024f，DIO） |
+| **真机刷入**（2026-10-12 19:10，ESP32-P4，`/dev/cu.usbmodem1101`） | `write_flash 0x0 merged.bin` 成功（3.8s，esptool 写后 **Hash of data verified**）；用户已在屏幕上目视确认（开机标题界面）。完整 `read_flash` 回读因 P4 USB-JTAG 串口瞬断（"Serial data stream stopped"，460800/115200 多次重试均失败，v0.4.1 时同现象重试即好）未取得全字节比对——刷入本身有 esptool 哈希校验 + 目视确认双重证据 |
+| **git push**（2026-10-12 19:12） | `260d414..07eb037 main -> main`，远端 SHA 与本地一致；token 走临时 credential.helper，未落盘 |
+| **CI**（push 后自动触发） | 首跑**红**：唯一失败项 = cn_font 字节级漂移（跨平台字体渲染不可复现，见 P2-4）→ 已改语义覆盖检查并复推，复跑结果见文末注记 |
 
 ## 四、经验（下次别再交学费）
 
@@ -123,6 +141,11 @@ uint8_t 截断真 bug + 1 个持续/节拍混淆设计缺陷。
    遗留值）全是测试自己的设置错误。**规则：先打印被测对象的实际状态再改代码。**
 6. **版本号小步走的实践**：一个 patch 号装下了启动界面+双语+引导+无尽+音色+新技能+数据化
    七件事——版本号是发布记号不是功能标尺，用户明确要求"别迭代太快"时就这样打包。
+7. **CI 检查的强度不能超过生成物的可复现性。** 三个 stdlib 生成器可以查字节漂移；
+   依赖系统字体的中文点阵不行——它是"这个机器这份字体"的快照，不是确定函数。
+   **规则：给生成物设计 CI 检查前先问"换台机器输出还一样吗"；不一样就查语义不变量
+   （覆盖/数量/结构），把字节一致性写成维护机纪律。** 另外：集合比较别写成数量比较，
+   负面测试（删/换/多）各来一发再收工。
 
 ## 五、下次开工提示词（整份复制粘贴）
 
@@ -132,15 +155,18 @@ v0.4.2 已实现"启动界面+双语+引导+无尽入口+SIEGE+音色+bot 分兵
 先读 docs/FIXLOG-v0.4.2.md 再动手。
 
 【树的位置】
-- 本目录 = 公开仓克隆（github.com/andjiang0083/pixel-tower-defense），v0.4.2 的改动
-  全部在工作树（git status 有 M/??），仿真 203 全绿，**未编译、未 commit、未 push**。
+- 本目录 = 公开仓克隆（github.com/andjiang0083/pixel-tower-defense），v0.4.2 已全部完成：
+  仿真 203 全绿、已编译打包（merged 944,272 B / sha256 b5e70110…d5f5）、已刷真机
+  （写后哈希校验 + 用户目视确认；完整回读因 P4 串口瞬断未取得）、已 push
+  （07eb037 及后续文档提交，CI 首跑红已修，复推后见绿）。
 - 作者开发树 ~/esp32/tab5-tower-defense、发布镜像树 ~/esp32/pixel-tower-defense-public
   （只准 tools/sync-public.sh 单向同步）。
 
 【已验证事实（2026-10-12，复跑命令在 docs/HANDOFF-PROMPT.md）】
 - sim：203 passed / 0 failed（v0.4.1 是 178；新增 §19-§24 全在 sim/run.cpp）
 - 生成器：layout.py GEN_EXIT=0；gen_cnfont.py（需 Pillow，多平台字体候选/CN_FONT 覆盖）、
-  gen_font、gen_sfx 输出与入库一致，CI 查四处漂移（含中文点阵）
+   gen_font、gen_sfx 输出与入库一致；CI 查三个确定性生成物漂移 + 中文字库语义覆盖
+  （check_cnfont.py；字节一致性是维护机纪律，见 P2-4）
 - 门禁关 L1-4 + L11-13 bot 全通；非门禁关失败集合与 v0.4.0 完全一致
 - 难度：./sim/sim --x2scan → L14-L20 双倍金币全 PASS（经济卡死非结构问题，结论在
   docs/PLAYTEST.md，未削弱任何数值）
@@ -156,8 +182,8 @@ P3：x2gold 扫描结论入 PLAYTEST.md。
 
 【规矩（沿用，别重犯）】
 - 改数值只改 tools/layout.py，然后 python3 tools/layout.py，必须 GEN_EXIT=0。
-- 零素材铁律：固件里不许出现图片/音频文件；中文点阵是生成物，改文案必须重跑
-  gen_cnfont.py（否则 CI 漂移红）。
+- 零素材铁律：固件里不许出现图片/音频文件；中文点阵是生成物，改文案必须用同一字体
+  重跑 gen_cnfont.py（git diff 须为空；CI 查语义覆盖 check_cnfont.py，覆盖不全即红）。
 - 位掩码/位图一扩宽，按类型名全文搜所有缓存/局部变量/掩码。
 - 持续时间和重放节拍必须是两个常量；全局时钟放状态机门控之前。
 - 末波绝不压叠；静态计时器绑 wave 并在 levelLoad 复位。
@@ -166,23 +192,27 @@ P3：x2gold 扫描结论入 PLAYTEST.md。
 - 不用串口调试；真机验收靠开机横幅自报版本行。
 
 【建议的下一步（按风险排）】
-1. pio run -e tab5 编译（注意沙箱可能拦 size 检查的文件操作，备选 esptool elf2image
-   --flash_mode dio 补齐 firmware.bin）→ merge_bin 合成 v0.4.2 merged → sha256。
-2. 真机刷入+回读（端口 /dev/cu.usbmodem1101，P4 偶发重枚举需重试）；验收点：开机
-   第一屏是标题界面（不是选关）、语言按钮切换中英文、首次进 L1 有三步引导、L20 通关
-   画面有无尽按钮、L11 王 SIEGE 红框封锁。
-3. commit + push（token 需用户重新提供，2026-10-12 那个已失效）。
-4. 用户明确要求后才建 GitHub Release v0.4.2（沿用 v0.4.1 纪律）。
+1. ~~pio run -e tab5 编译 → merge_bin 合成 v0.4.2 merged → sha256~~（已完成：944,272 B，
+   b5e70110…d5f5；沙箱拦 size 检查时用 ~/.platformio/penv/bin/python -m esptool elf2image
+   --flash_mode dio 补齐 firmware.bin，再 merge-bin）。
+2. ~~真机刷入~~（已完成 19:10；验收点已过：开机第一屏是标题界面）。
+3. ~~commit + push~~（已完成 19:12；token 已由用户更新过一次，若再失效需重新提供）。
+4. 用户明确要求后才建 GitHub Release v0.4.2（沿用 v0.4.1 纪律；merged+sha256 就绪）。
 5. 后续建议：真人试玩回收 L11-L20 失败波次；README 首图换真机实拍；无尽模式深度调平衡。
 ```
 
 ## 六、遗留事项（需要你拍板/外部条件）
 
-1. **未刷机/未 push/未建 Release**：v0.4.2 已编译打包（merged 944,272 B，sha256 `b5e70110…d5f5`，
-   见 §三）、已本地 commit（`987a657`，30 个文件），但**尚未刷真机、尚未 push、未建 Release**。
-   刷机验收点见上第五条。
-2. **push 需要新 token**：2026-10-12 提交时用的 GitHub token 已失效，需要用户重新提供。
-3. **GitHub Release v0.4.2**：按 v0.4.1 纪律，等用户明确发话再建。
+1. **~~未刷机~~（已完成 2026-10-12 19:10）**：v0.4.2 已刷入真机——esptool 写后哈希校验
+   （Hash of data verified）+ 用户屏幕目视确认开机标题界面。完整 `read_flash` 回读因 P4
+   USB-JTAG 串口瞬断未取得全字节比对（460800/115200 多次重试均断在流中；v0.4.1 时同现象
+   重试即好，本轮未复现成功——工具/环境问题，非固件问题）。
+   **~~未 push~~（已完成 19:12）**：已推到 GitHub（`260d414..07eb037`，远端 SHA 一致；
+   token 走临时 credential.helper 未落盘）。CI 首跑红（cn_font 字节漂移，见 P2-4），
+   已改语义覆盖检查（`tools/check_cnfont.py`）后复推。
+2. **~~push 需要新 token~~（已解决）**：用户 19:10 提供新 token，推送已完成。
+3. **GitHub Release v0.4.2**：按 v0.4.1 纪律，等用户明确发话再建（merged bin 与 sha256
+   已就绪：944,272 B / `b5e70110…d5f5`）。
 4. **M5Burner 条目**（vid `2109325922863968258`）仍在审核，更新需要用户账号操作。
 5. **真人试玩回收**：L11–L20 第几波崩、引导三步是否讲清了玩法、中文 HUD 在真机上的
-   可读性（16×16 点阵的笔画密度）——硬件在线（`/dev/cu.usbmodem1101`）。
+   可读性（16×16 点阵的笔画密度）——硬件在线（`/dev/cu.usbmodem1101`，v0.4.2 已刷入）。

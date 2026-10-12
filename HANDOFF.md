@@ -29,7 +29,10 @@
 > 七关全 PASS = 经济卡死非结构问题）。抓修 3 个 uint8_t 截断真 bug（L11 王 SIEGE
 > 静默失效）+ SIEGE 持续/节拍混淆。仿真 **178 → 203**。**档案在
 > [`docs/FIXLOG-v0.4.2.md`](docs/FIXLOG-v0.4.2.md)**。
-> **v0.4.2 状态：改动全在工作树，仿真全绿，但尚未编译、尚未 commit/push、未建 Release。**
+> **v0.4.2 状态：已全部完成并推送 GitHub**（2026-10-12 晚，仿真 203、merged 944,272 B、
+> 真机刷入目视确认、CI 首跑红已修）。剩余仅 **GitHub Release v0.4.2 等用户发话**、
+> M5Burner 更新（审核中）、开发树 sync-public.sh 同步。详见
+> [`docs/FIXLOG-v0.4.2.md`](docs/FIXLOG-v0.4.2.md)。
 
 ---
 

@@ -46,7 +46,10 @@ Under the hood:
 - The bot splits its upgrades by route coverage instead of round-robin, and
   the PC simulator gained 25 assertions (178 → **203**), plus an `--x2scan`
   mode that re-runs late levels with doubled gold to classify difficulty.
-- CI checks the Chinese font generator for drift, like the other generators.
+- CI checks the three deterministic generators for drift and the Chinese font
+  for *coverage* (every character in the string table has a glyph) — pixel
+  bitmaps are rasterised from a system font and cannot be byte-identical
+  across machines, so the semantic invariant is what CI enforces.
 
 ## v0.4.1 — the fixes you feel only after an hour of play
 

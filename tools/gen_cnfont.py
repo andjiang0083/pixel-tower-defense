@@ -6,9 +6,15 @@
 # STHeiti Medium.ttc；其他平台把 FONT_PATH 换成本地中文字体即可。
 # 二值化阈值 128：16px 汉字点阵下笔画清晰、不断连。
 #
-# 用法：python3 tools/gen_cnfont.py   # 输出 src/cn_font.h（提交前必跑，CI 查漂移）
+# 用法：python3 tools/gen_cnfont.py   # 输出 src/cn_font.h（提交前必跑）
 # 依赖：Pillow（pip install Pillow）
 # 字体：默认按平台挑候选；可用环境变量 CN_FONT 指定任意中文字体文件。
+#
+# ⚠️ 字节一致性纪律：点阵由 Pillow+FreeType 光栅化外部字体得到，换字体/换平台/
+# 升级依赖都会得到不同字节（实测同机 STHeiti vs Hiragino 即不同）。所以：
+#   - 提交前用**同一字体**重跑，git diff 必须为空（维护机纪律）；
+#   - CI 不做字节级漂移，改查语义覆盖：tools/check_cnfont.py（纯 stdlib）。
+# 想在不同机器上复现入库字节，设 CN_FONT 指向生成时用的那个字体文件。
 import os, re, sys, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
