@@ -2,7 +2,7 @@
  * Copyright (c) 2026 andjiang0083
  */
 // ============================================================================
-// PIXEL TOWER DEFENSE — M5Stack Tab5 (ESP32-P4)  v0.4.1
+// PIXEL TOWER DEFENSE — M5Stack Tab5 (ESP32-P4)  v0.4.2
 // ----------------------------------------------------------------------------
 // ⚠️ 为什么不是 TFT_eSPI（重要）：
 //   Tab5 的屏是 MIPI DSI（ILI9881C / ST7123），不是 SPI/QSPI。ESP32-P4 的
@@ -32,16 +32,17 @@
 #include <Preferences.h>       // v0.2.0：关卡解锁进度持久化到 NVS
 
 #include "config_gen.h"     // 生成的网格/路径/数值（真源 tools/layout.py）
-#include "pixel_text.h"     // 5x7 点阵文字（逐位 fillRect）
+#include "pixel_text.h"     // 5x7 点阵文字 + v0.4.2 中文 16x16（逐位 fillRect）
+#include "i18n.h"           // v0.4.2：界面文本双语表（标题界面选择语言）
 #include "game.h"           // Enemy/Tower/Bullet/Fx + gameUpdate()
 #include "touch.h"          // readTap()：非阻塞 tap-on-release
-#include "render.h"         // drawBackground / renderFrame
+#include "render.h"         // drawBackground / renderFrame / drawTitle
 #include "actions.h"        // handleTap / updateBuildFx / updateOverlays（内含 progress.h）
 
 static Preferences s_prefs;
 
-// 进度落盘：把解锁/通关/星级写进 NVS（v0.4.1：去重逻辑在 progress.h，
-// 由仿真断言"通关画面只写一次"；packStars 也搬过去了）
+// 进度落盘：把解锁/通关/星级/语言/引导/无尽记录写进 NVS
+// （v0.4.1：去重逻辑在 progress.h，由仿真断言"通关画面只写一次"）
 static void saveProgress(void) {
   s_prefs.begin("td", false);
   s_prefs.putUInt("unlock", g_unlocked);
@@ -49,6 +50,9 @@ static void saveProgress(void) {
   s_prefs.putUInt("stars",  packStars(0));
   s_prefs.putUInt("stars2", packStars(10));
   s_prefs.putUChar("mute", s_muted ? 1 : 0);   // v0.3.1：静音偏好
+  s_prefs.putUChar("lang", (uint8_t)g_lang);   // v0.4.2：界面语言
+  s_prefs.putUChar("onboarded", g_onboarded ? 1 : 0);  // v0.4.2：引导只讲一次
+  s_prefs.putUShort("endbest", (uint16_t)g_endBest);   // v0.4.2：无尽最高波次
   s_prefs.end();
 }
 
@@ -73,7 +77,7 @@ void setup(void) {
   M5.begin(cfg);
   M5.Display.setRotation(3);              // Tab5 横屏 1280x720
 
-  Serial.printf("=== PIXEL TOWER DEFENSE v0.4.1 | board=%d | %dx%d ===\n",
+  Serial.printf("=== PIXEL TOWER DEFENSE v0.4.2 | board=%d | %dx%d ===\n",
                 (int)M5.getBoard(), SCREEN_W, SCREEN_H);
 
   // PSRAM 是帧缓冲所在地（DSI video mode）；没有就停下，别黑屏空转
@@ -82,26 +86,29 @@ void setup(void) {
     while (true) delay(1000);
   }
 
-  // ── v0.2.0：读进度 → 进选关界面（唯一开局入口）───────────────
+  // ── v0.2.0：读进度 → 标题界面（v0.4.2 起开机第一屏是标题）─────
   s_prefs.begin("td", true);
   g_unlocked = s_prefs.getUInt("unlock", 0x0001) | 0x0001;      // L1 永远解锁（v0.4：uint32）
   g_cleared  = s_prefs.getUInt("clear", 0);
   uint32_t packed = s_prefs.getUInt("stars", 0);               // v0.3.0：旧档无此键=0
   uint32_t packed2 = s_prefs.getUInt("stars2", 0);             // v0.4：L11-20
   sfxSetMuted(s_prefs.getUChar("mute", 0) != 0);              // v0.3.1
+  setLang(s_prefs.getUChar("lang", LANG_EN));                 // v0.4.2：界面语言（默认英文）
+  g_onboarded = s_prefs.getUChar("onboarded", 0) != 0;        // v0.4.2：引导只讲一次
+  g_endBest   = (int16_t)s_prefs.getUShort("endbest", 0);     // v0.4.2：无尽最高波次
   s_prefs.end();
   for (int i = 0; i < LEVEL_COUNT && i < 10; ++i)  g_stars[i] = (uint8_t)((packed >> (i * 3)) & 7);
   for (int i = 10; i < LEVEL_COUNT && i < 20; ++i) g_stars[i] = (uint8_t)((packed2 >> ((i - 10) * 3)) & 7);
   g_saveProgress = saveProgress;
 
   levelLoad(0);                       // 预载 L1（选关前世界已就绪）
-  g_w.state = ST_SEL;               // 开局先进选关界面
-  drawLevelSelect(&M5.Display);
+  g_w.state = ST_TITLE;               // v0.4.2：开机先进标题界面
+  drawTitle(&M5.Display);
 
-  Serial.printf("unlock=%04X cleared=%04X levels=%d\n",
-                g_unlocked, g_cleared, LEVEL_COUNT);
-  Serial.println("tap node = enter level | tap SLOT then MAP = build");
-  Serial.println("tap TOWER = upgrade panel (pauses) | NEXT WAVE = fight");
+  Serial.printf("unlock=%04X cleared=%04X levels=%d lang=%s endbest=%d\n",
+                g_unlocked, g_cleared, LEVEL_COUNT,
+                langCN() ? "CN" : "EN", (int)g_endBest);
+  Serial.println("tap language = switch EN/中文 | tap = start");
 
   delay(1200);                            // 让开局界面可见
 }
@@ -116,8 +123,9 @@ void loop(void) {
   Tap t = readTap();                      // 非阻塞：按住屏幕不会卡住世界
   if (t.valid) handleTap(&M5.Display, t);
 
-  // 选关界面：静态画面，无世界逻辑（handleTap 已处理跳转）；
-  // v0.4.1：锁关红叉反馈在这里推进（20 帧后自擦）
+  // 标题/选关界面：静态画面，无世界逻辑（handleTap 已处理跳转）；
+  // v0.4.1：锁关红叉反馈在选关界面推进（20 帧后自擦）
+  if (g_w.state == ST_TITLE) { delay(20); return; }
   if (g_w.state == ST_SEL) { updateSelFx(&M5.Display); delay(20); return; }
 
   uint32_t now = millis();
@@ -128,6 +136,10 @@ void loop(void) {
 
   gameUpdate(dt);                            // ── 逻辑（不碰绘制）──
   renderFrame(&M5.Display);                  // ── 渲染（不碰逻辑）──
+  // v0.4.2：首次引导 overlay（对话框区域点击推进；NVS 记住只讲一次）
+  if (g_onboardStep > 0 &&
+      (g_w.state == ST_READY || g_w.state == ST_WAVE))
+    drawOnboard(&M5.Display, g_onboardStep);
   updateBuildFx(&M5.Display);              // ── 建造反馈动画 ──
   updateOverlays(&M5.Display);             // ── Game Over 覆盖层（只画一次）──
 

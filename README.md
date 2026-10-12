@@ -23,21 +23,28 @@ upgrade them, and try to keep 20 lives. Later maps are *rock fields*: most of th
 ground is unbuildable, so the good spots are a budget you have to spend well.
 
 It is a small game with an unusually strict constraint: **the repository contains
-zero asset files**. The 5×7 font is 95 hand-written bitmaps, all PCM for the sound
-effects is synthesised at build time (square waves, sweeps, an LFSR noise source),
-and every sprite, tower, bullet and UI element is a stack of rectangles. Clone it,
-build it, and nothing gets downloaded except the toolchain.
+zero asset files**. The 5×7 font is 95 hand-written bitmaps, the 16×16 Chinese font
+is *generated* from the game's own string table (`tools/gen_cnfont.py` renders the
+actual strings out of `src/i18n.h`), all PCM for the sound effects is synthesised at
+build time (square waves, sweeps, an LFSR noise source), and every sprite, tower,
+bullet and UI element is a stack of rectangles. Clone it, build it, and nothing gets
+downloaded except the toolchain.
+
+On boot you get a **title screen**: a starfield, a rainbow pixel logo, the version,
+and an EN / 中文 toggle. Your first level opens with a three-step tutorial that never
+comes back.
 
 | | |
 |---|---|
 | Device | M5Stack Tab5 (ESP32-P4, 16 MB flash, PSRAM @200 MHz) |
 | Display | 1280×720 MIPI-DSI, 40 px cells, 32×14 grid |
 | Input | Touch only (no physical buttons on this device) |
-| Levels | 20 (+ endless engine, UI not wired yet — see *Status*) |
+| Levels | 20 + endless mode (unlocked by clearing L20, best wave remembered) |
 | Towers | 5 types, 3 levels each (+12% range, ×1.3 damage per level) |
 | Enemies | 9 kinds, incl. air (flies straight to your base) and healers |
-| Bosses | 8 abilities; up to two bosses per level, mid-bosses too |
-| RAM / Flash | 37,016 B (7.2%) / 819,586 B (26.1%) of a v0.4.1 build |
+| Bosses | 9 abilities; up to two bosses per level, mid-bosses too |
+| Languages | English / 中文, switchable on the title screen (16×16 bitmap font, generated from source) |
+| RAM / Flash | 37,248 B (7.3%) / 833,808 B (26.5%) of a v0.4.2 build |
 
 ## Screenshots
 
@@ -111,12 +118,14 @@ Details, pitfalls and recovery steps: **[BUILDING.md](BUILDING.md)**.
 | HEALER | Heals nearby enemies — kill it first |
 | BOSS | Every few waves, with abilities, up to two per level |
 
-**Boss abilities** (8 total, mixed per level): `HEAL` self-healing aura · `BROOD`
+**Boss abilities** (9 total, mixed per level): `HEAL` self-healing aura · `BROOD`
 spawns troops · `SPLIT` bursts into minions on death · `HORN` hastes every enemy
 on the map · `EMP` silences your nearest towers · `GREED` steals gold when it hits
 your base · `MOLT` sheds its armour at half health and speeds up · `GHOST` turns
-periodically untargetable. Mid-bosses get exactly one ability, and never a
-sustain ability — a mini boss should show off, not stall the game.
+periodically untargetable · `SIEGE` plants a temporary no-build zone on the field
+(first seen on L11 — the first ability that constrains *space*, not numbers).
+Mid-bosses get exactly one ability, and never a sustain ability — a mini boss
+should show off, not stall the game.
 
 ## Level design: difficulty comes from space, not from bigger numbers
 
@@ -160,14 +169,14 @@ Two design rules that came out of this work:
 | 20 levels, unlock chain, star ratings, NVS progress | ✅ |
 | 5 towers with upgrades and selling | ✅ |
 | 9 enemy kinds, air units, shields, armour | ✅ |
-| 8 boss abilities, mid-bosses, multi-boss levels | ✅ |
-| Procedural SFX + mute preference | ✅ |
+| 9 boss abilities (incl. SIEGE no-build zones), mid-bosses, multi-boss levels | ✅ |
+| Procedural SFX (three rotating gun variants) + mute preference | ✅ |
 | Rock (no-build) layers on L15/L16/L18/L20 | ✅ |
-| PC simulator that plays all 20 levels with assertions | ✅ 178 checks, 0 failures |
-| **Endless mode** | ❌ engine and parameters exist, **no UI entry point yet** |
-| Endless best-wave record in NVS | ❌ not implemented |
+| Title screen with language select (EN/中文) + first-run tutorial | ✅ |
+| PC simulator that plays all 20 levels with assertions | ✅ 203 checks, 0 failures |
+| **Endless mode** | ✅ clear L20 to enter; best wave remembered in NVS |
+| Difficulty of L14–L20 | ✅ quantified: all seven clear with 2× starting gold (3.3k–7.6k spare) — *economy-locked, not structurally broken*; data in `docs/PLAYTEST.md`. Human play-test reports still welcome. |
 | Save/resume of a game in progress | ❌ deliberately out of scope |
-| Difficulty of L14–L20 verified by a human | ⚠️ **not yet** — the bot loses L14–L20 and the bot is *not* a difficulty benchmark (it cannot split its defence between two routes). Play-test reports welcome. |
 
 Honest note on the simulator: it compiles the **real** `game.h` / `render.h` /
 `touch.h` / `actions.h` against a fake M5GFX and plays every level with a greedy
@@ -179,12 +188,13 @@ the rest are recorded for information.
 
 | Check | Result |
 |---|---|
-| `./sim/sim` (20 levels + map data) | **178 checks passed, 0 failed** |
+| `./sim/sim` (20 levels + map data + title/onboard/endless/SIEGE) | **203 checks passed, 0 failed** (v0.4.1: 178) |
 | Gated levels cleared by the bot | L1–L4 and L11–L13, incl. L13 with 20/20 lives, 318 kills |
+| `./sim/sim --x2scan` (L14–L20 with 2× starting gold) | **all seven PASS** (3,296–7,619 gold spare) — the "hard" is economic, not structural; `docs/PLAYTEST.md` |
 | Coverage audit, all 20 maps (`tools/map_design.py`) | All PASS: minimum towers 5→18 ≤ 20, no dead path cells, three viable build orders |
-| `pio run -e tab5` (v0.4.1) | SUCCESS — RAM 37,016 B (7.2 %), Flash 819,586 B (26.1 %) |
-| Merged image (929,360 B) | built with `esptool merge_bin`; boot/partition/app headers verified identical to the v0.4.0 layout (offsets 0x2000 / 0x8000 / 0xe000 / 0x10000) |
-| Device flash + readback | **PASS** — flashed to a real Tab5 (ESP32-P4 rev 1.3) on 2026-10-12; bootloader / partition / boot_app0 / app regions read back **byte-identical** (app sha256 `682b739d…`); boot banner `=== PIXEL TOWER DEFENSE v0.4.1 | board=22 | 1280x720 ===`; the previous NVS progress (`unlock=0007 cleared=0003`) survived and loaded correctly |
+| `pio run -e tab5` (v0.4.2) | SUCCESS — RAM 37,248 B (7.3 %), Flash 833,808 B (26.5 %) (the final size-check step was blocked by the local sandbox; compile+link succeeded, `firmware.bin` rebuilt from the ELF with esptool — same as v0.4.1) |
+| Merged image (944,272 B) | built with `esptool merge-bin`; boot/partition/app headers verified identical to the v0.4.0 layout (offsets 0x2000 / 0x8000 / 0xe000 / 0x10000); sha256 `b5e70110…d5f5` |
+| Device flash + readback | **PASS** — flashed to a real Tab5 (ESP32-P4 rev 1.3) on 2026-10-12; bootloader / partition / boot_app0 / app regions read back **byte-identical** (app sha256 `682b739d…`); boot banner `=== PIXEL TOWER DEFENSE v0.4.1 | board=22 | 1280x720 ===`; the previous NVS progress (`unlock=0007 cleared=0003`) survived and loaded correctly (v0.4.1 image; the v0.4.2 flash is pending) |
 
 Bugs found and locked in by the simulator (now regression assertions): `int8_t`
 projectile speed truncation, coordinates not written back, target selection
@@ -193,7 +203,9 @@ single tower and faked a healthy economy. The v0.4 work also caught a `uint16_t`
 unlock bitmap that would have permanently locked level 17. v0.4.1 caught the
 same species of bug in the NVS save-dedup cache (a `uint16_t` cache against a
 `uint32_t` bitmap, writing flash every frame on the level-clear screen) — now
-covered by assertions in `sim/run.cpp` §15.
+covered by assertions in `sim/run.cpp` §15. v0.4.2 caught the same species again:
+three `uint8_t` truncation sites that would have silently disabled the SIEGE
+ability (bit 256) on hardware — §22.
 
 ## Repository layout
 
@@ -201,11 +213,13 @@ covered by assertions in `sim/run.cpp` §15.
 tools/layout.py     ← single source of truth: grid, paths, economy, level table, palette
                       → generates src/config_gen.h (+ preview.png)
 tools/gen_font.py   ← the 5×7 font's only source (hand-written glyph bitmaps) → src/pixel_font.h
+tools/gen_cnfont.py ← renders the 16×16 Chinese font from the strings in src/i18n.h → src/cn_font.h
 tools/gen_sfx.py    ← synthesises every PCM effect → src/sfx_data.h
 tools/map_design.py ← coverage-budget auditor + heat maps + 20-map contact sheet
 tools/mkposter.py   ← builds the promo art from a real frame + the game's own font/PCM
 sim/run.cpp         ← compiles the real firmware sources and plays all levels (assertions)
 sim/compat/         ← fake M5Unified/M5GFX so the same code compiles on a PC
+src/i18n.h          ← StrId enum + parallel EN/CN string tables + runtime language switch
 src/game.h          ← World/Enemy/Tower/Bullet/Fx + gameUpdate(): no drawing
 src/render.h        ← drawing only: fillRect / drawPixel, nothing else
 src/main.cpp        ← setup/loop, touch → action dispatch, NVS progress

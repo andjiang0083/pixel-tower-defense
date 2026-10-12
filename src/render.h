@@ -7,6 +7,7 @@
 #pragma once
 #include <M5GFX.h>
 #include "config_gen.h"
+#include "i18n.h"        // v0.4.2：界面文本双语表（语言在标题界面选择）
 #include "game.h"        // g_w / 实体类型（本模块只读不写游戏状态）
 #include "pixel_text.h"
 
@@ -24,6 +25,15 @@ static inline void resetRenderCaches(void) {
   s_lastSel = -2; s_lastAfford = -1; s_lastBtn = -1;
   s_lastPanelIdx = -1; s_lastLv = 0;
 }
+
+// v0.4.2：无尽模式入口按钮几何（drawLevelClear 画 / actions.h 命中，唯一真源）
+#define ENDLESS_BTN_X 380
+#define ENDLESS_BTN_Y 590
+#define ENDLESS_BTN_W 280
+#define ENDLESS_BTN_H 64
+
+// v0.4.2 前向声明（定义在文件末：renderFrame 在中间要调用）
+static void drawSiege(M5GFX* g);
 
 // ── 画一个格子的底色（草地棋盘纹 / 土路抖动纹）───────────────────
 static void drawCellBase(M5GFX* g, int col, int row) {
@@ -87,9 +97,9 @@ static void drawBackground(M5GFX* g) {
 
   // HUD 静态标签：♥ / $ / WAVE（数字每帧按需刷新）+ 关卡名
   px_char(g, 16, 24, '\x01', C_BAD, 4);                       // ♥
-  px_text(g, 52, 20, "HP",   C_TEXT_DIM, 3);
+  px_text(g, 52, 20, TR(STR_HP),   C_TEXT_DIM, 3);
   px_text(g, 420, 20, "$",    C_GOLD,     3);
-  px_text(g, 800, 20, "WAVE", C_TEXT_DIM, 3);
+  px_text(g, 800, 20, TR(STR_WAVE), C_TEXT_DIM, 3);
 }
 
 // ── 建造栏（v0.1.2）：槽位 = 塔种图标 + 名称 + 价格 ───────────────
@@ -141,7 +151,7 @@ static void drawBuildBar(M5GFX* g) {
     g->fillRect(x + 46, y + 38, 90, FONT_H * 2 + 4, C_SLOT_BG);
     px_text(g, x + 46, y + 38, "$", afford ? C_GOLD : C_TEXT_DIM, 2);
     px_text(g, x + 64, y + 38, buf, afford ? C_GOLD : C_TEXT_DIM, 2);
-    if (!afford) px_text(g, x + 46, y + 52, "NEED", C_BAD, 1);
+    if (!afford) px_text(g, x + 46, y + 52, TR(STR_NEED), C_BAD, 1);
     // v0.3.0 对空角标：能打天的塔右上角一个小白飞机（决策一眼可读）
     if (TOWER_AIR_OK[i]) {
       const int ax = x + SLOT_W - 26, ay = y + 6;
@@ -151,9 +161,9 @@ static void drawBuildBar(M5GFX* g) {
   }
 
   // 建造栏右侧操作提示（常驻，替代旧的浮动 hint）
-  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 14, "TAP SLOT", C_TEXT_DIM, 2);
-  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 34, "THEN MAP", C_TEXT_DIM, 2);
-  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 54, "TAP TOWER=UP", C_TEXT_DIM, 1);
+  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 14, TR(STR_TAP_SLOT), C_TEXT_DIM, 2);
+  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 34, TR(STR_THEN_MAP), C_TEXT_DIM, 2);
+  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 54, TR(STR_TAP_TOWER), C_TEXT_DIM, 1);
 }
 
 // ── HUD 数字（只在数值变化时调用）────────────────────────────────
@@ -176,11 +186,22 @@ static void drawHud(M5GFX* g) {
   px_itoa(g_w.gold, buf);
   px_text(g, 500, 20, buf, C_GOLD, 3);
 
+  // v0.4.2：无尽模式在 $ 与 WAVE 之间显示历史最高波次（NVS 持久）
+  if (g_w.endless) {
+    px_text(g, 770, 26, TR(STR_BEST), C_TEXT_DIM, 1);
+    px_itoa(g_endBest, buf);
+    px_text(g, 770 + px_textWidth(TR(STR_BEST), 1) + 6, 26, buf, C_STAR, 1);
+  }
+
   // WAVE x/N（本关总波数一目了然；无尽模式总波数走 lvWaves()=250）
   g->fillRect(896, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
   char wbuf[24]; px_itoa(g_w.wave, wbuf);
   strcat(wbuf, "/"); char tbuf[8]; px_itoa(lvWaves(), tbuf); strcat(wbuf, tbuf);
   px_text(g, 900, 20, wbuf, C_TEXT, 3);
+
+  // v0.4.2：SIEGE 警示条（HP 与 $ 之间的空档；常态清空，封锁中画红字）
+  g->fillRect(300, 14, 180, FONT_H * 3 + 6, C_UI_BG);
+  if (g_w.siegeMs > 0) px_text(g, 300, 26, TR(STR_SIEGE_WARN), C_BAD, 1);
 }
 
 // ── NEXT WAVE 按钮（v0.2.1：波间变倒计时条）───────────────────────
@@ -198,7 +219,7 @@ static void drawButton(M5GFX* g, bool enabled) {
   // 双线描边（像素风按钮）
   g->drawRect(BTN_X, BTN_Y, BTN_W, BTN_H, enabled ? C_BTN_HI : C_GRASS_EDGE);
   g->drawRect(BTN_X + 2, BTN_Y + 2, BTN_W - 4, BTN_H - 4, enabled ? C_BTN_HI : C_GRASS_EDGE);
-  const char* s = (g_w.state == ST_WAVE) ? "FIGHTING" : "NEXT WAVE";
+  const char* s = (g_w.state == ST_WAVE) ? TR(STR_FIGHTING) : TR(STR_NEXT_WAVE);
   px_textCenter(g, BTN_X + BTN_W / 2, BTN_Y + 8, s,
                 enabled ? C_BTN_TEXT : C_TEXT_DIM, 2);
 
@@ -427,6 +448,9 @@ static void drawFx(M5GFX* g, const Fx& f) {
     g->drawRect((int)f.x - r, (int)f.y - r, r * 2, r * 2, C_FX_WHITE);
     g->fillRect((int)f.x - r, (int)f.y - 1, r * 2, 2, C_FX_WHITE);   // 横裂
     g->fillRect((int)f.x - 1, (int)f.y - r, 2, r * 2, C_FX_WHITE);   // 竖裂
+  } else if (f.kind == 8) {             // v0.4.2 🚧 SIEGE：封锁红框脉冲
+    g->drawRect((int)f.x - r, (int)f.y - r, r * 2, r * 2, C_BAD);
+    g->drawRect((int)f.x - r + 6, (int)f.y - r + 6, (r-6) * 2, (r-6) * 2, C_WARN);
   } else {
     g->drawRect((int)f.x - r, (int)f.y - r, r * 2, r * 2, C_FX_WHITE);
   }
@@ -465,9 +489,9 @@ static void eraseRangeBox(M5GFX* g) {
     drawButton(g, s_lastBtn >= 0 ? (bool)s_lastBtn : true); // NEXT WAVE / 倒计时槽
     if (g_w.state == ST_READY && g_w.wave > 0) drawWaveCountdown(g);
     px_char(g, 16, 24, '\x01', C_BAD, 4);                  // HUD 静态图标
-    px_text(g, 52, 20, "HP",   C_TEXT_DIM, 3);
+    px_text(g, 52, 20, TR(STR_HP),   C_TEXT_DIM, 3);
     px_text(g, 420, 20, "$",    C_GOLD,     3);
-    px_text(g, 800, 20, "WAVE", C_TEXT_DIM, 3);
+    px_text(g, 800, 20, TR(STR_WAVE), C_TEXT_DIM, 3);
   }
   if (g_rbY1 >= BUILD_BAR_Y) {
     g->fillRect(g_rbX0, BUILD_BAR_Y, g_rbX1 - g_rbX0 + 1, SCREEN_H - BUILD_BAR_Y, C_UI_BG);
@@ -537,27 +561,27 @@ static void drawTowerPanel(M5GFX* g, const Tower& t) {
   if (t.type == 3) {                                   // v0.3.0 能量塔
     px_text(g, px + 14, py + 58, "+$", C_GOLD, 2);
     px_text(g, px + 70, py + 58, buf, C_GOLD, 2);
-    px_text(g, px + 150, py + 58, "PULSE", C_TEXT_DIM, 2);
+    px_text(g, px + 150, py + 58, TR(STR_PULSE), C_TEXT_DIM, 2);
     px_itoa((int)towerFireMs(t), buf);
     strcat(buf, "MS");
     px_text(g, px + 210, py + 58, buf, C_TEXT, 2);
-    px_text(g, px + 14, py + 84, "NO ATTACK - EARNS GOLD", C_TEXT_DIM, 1);
+    px_text(g, px + 14, py + 84, TR(STR_NO_ATTACK), C_TEXT_DIM, 1);
     noRange = true;
   } else if (t.type == 2) {
-    px_text(g, px + 14, py + 58, "SLOW", C_FROST_RING, 2);
-    px_text(g, px + 14, py + 80, "PULSE", C_TEXT_DIM, 2);
+    px_text(g, px + 14, py + 58, TR(STR_SLOW), C_FROST_RING, 2);
+    px_text(g, px + 14, py + 80, TR(STR_PULSE), C_TEXT_DIM, 2);
     px_itoa((int)towerRange(t), buf);
-    px_text(g, px + 150, py + 80, "RNG", C_TEXT_DIM, 2);
+    px_text(g, px + 150, py + 80, TR(STR_RNG), C_TEXT_DIM, 2);
     px_text(g, px + 210, py + 80, buf, C_TEXT, 2);
   } else {
-    px_text(g, px + 14, py + 58, "DMG", C_TEXT_DIM, 2);
+    px_text(g, px + 14, py + 58, TR(STR_DMG), C_TEXT_DIM, 2);
     px_text(g, px + 70, py + 58, buf, C_TEXT, 2);
     px_itoa((int)towerRange(t), buf);
-    px_text(g, px + 150, py + 58, "RNG", C_TEXT_DIM, 2);
+    px_text(g, px + 150, py + 58, TR(STR_RNG), C_TEXT_DIM, 2);
     px_text(g, px + 210, py + 58, buf, C_TEXT, 2);
-    if (t.type == 1) px_text(g, px + 70, py + 84, "SPLASH", C_SPLASH, 2);
-    if (TOWER_TYPES[t.type].splash_r > 0) px_text(g, px + 150, py + 84, "NO-ARMOR", C_SPLASH, 1);
-    else px_text(g, px + 70, py + 84, "SINGLE", C_TEXT_DIM, 1);
+    if (t.type == 1) px_text(g, px + 70, py + 84, TR(STR_SPLASH), C_SPLASH, 2);
+    if (TOWER_TYPES[t.type].splash_r > 0) px_text(g, px + 150, py + 84, TR(STR_NO_ARMOR), C_SPLASH, 1);
+    else px_text(g, px + 70, py + 84, TR(STR_SINGLE), C_TEXT_DIM, 1);
   }
 
   // UP / SELL 按钮
@@ -567,21 +591,21 @@ static void drawTowerPanel(M5GFX* g, const Tower& t) {
   if (upc < 0) {                                  // 已满级
     g->fillRect(ux, uy, PBTN_W, PBTN_H, C_SLOT_BG);
     g->drawRect(ux, uy, PBTN_W, PBTN_H, C_TEXT_DIM);
-    px_textCenter(g, ux + PBTN_W / 2, uy + 14, "MAX", C_GOLD, 3);
-    px_textCenter(g, ux + PBTN_W / 2, uy + 48, "LEVEL", C_TEXT_DIM, 1);
+    px_textCenter(g, ux + PBTN_W / 2, uy + 14, TR(STR_MAX), C_GOLD, 3);
+    px_textCenter(g, ux + PBTN_W / 2, uy + 48, TR(STR_LEVEL), C_TEXT_DIM, 1);
   } else {
     const bool ok = (g_w.gold >= upc);
     g->fillRect(ux, uy, PBTN_W, PBTN_H, ok ? C_BTN : C_SLOT_BG);
     g->drawRect(ux, uy, PBTN_W, PBTN_H, ok ? C_BTN_HI : C_TEXT_DIM);
-    px_textCenter(g, ux + PBTN_W / 2, uy + 8, "UPGRADE", ok ? C_BTN_TEXT : C_TEXT_DIM, 2);
+    px_textCenter(g, ux + PBTN_W / 2, uy + 8, TR(STR_UPGRADE), ok ? C_BTN_TEXT : C_TEXT_DIM, 2);
     strcpy(buf, "$"); px_itoa(upc, buf + 1);
     px_textCenter(g, ux + PBTN_W / 2, uy + 36, buf, ok ? C_GOLD : C_BAD, 2);
-    if (!ok) px_textCenter(g, ux + PBTN_W / 2, uy + 56, "NEED GOLD", C_BAD, 1);
+    if (!ok) px_textCenter(g, ux + PBTN_W / 2, uy + 56, TR(STR_NEED_GOLD), C_BAD, 1);
   }
 
   g->fillRect(sx, sy, PBTN_W - 40, PBTN_H, C_SLOT_BG);
   g->drawRect(sx, sy, PBTN_W - 40, PBTN_H, C_BAD);
-  px_textCenter(g, sx + (PBTN_W - 40) / 2, sy + 8, "SELL", C_BAD, 2);
+  px_textCenter(g, sx + (PBTN_W - 40) / 2, sy + 8, TR(STR_SELL), C_BAD, 2);
   strcpy(buf, "$"); px_itoa(sellRefund(t), buf + 1);
   px_textCenter(g, sx + (PBTN_W - 40) / 2, sy + 36, buf, C_GOLD, 2);
 
@@ -641,6 +665,9 @@ static void renderFrame(M5GFX* g) {
   for (int i = 0; i < MAX_BULLETS; ++i) if (g_w.bullets[i].active) drawBullet(g, g_w.bullets[i]);
   for (int i = 0; i < MAX_FX; ++i)     if (g_w.fx[i].active)       drawFx(g, g_w.fx[i]);
 
+  // v0.4.2：SIEGE 封锁区（最上层：压着塔与兵，一眼看见"这里不能建"）
+  drawSiege(g);
+
   // ── 建造栏刷新：选中变化 or 金币跨过可负担档位（不是每帧全刷）──
   int32_t mask = 0;
   for (int i = 0; i < TT_COUNT; ++i) if (g_w.gold >= TOWER_TYPES[i].cost) mask |= (1 << i);
@@ -698,21 +725,21 @@ static void drawGameOver(M5GFX* g) {
   g->drawRect(bx, by, bw, bh, C_BAD);
   g->drawRect(bx + 3, by + 3, bw - 6, bh - 6, C_BAD);
 
-  px_textCenter(g, SCREEN_W / 2, by + 40, "GAME OVER", C_BAD, 6);
+  px_textCenter(g, SCREEN_W / 2, by + 40, TR(STR_GAME_OVER), C_BAD, 6);
 
   char buf[32];
-  strcpy(buf, "WAVE "); px_itoa(g_w.wave, buf + 5);
+  strcpy(buf, TR(STR_WAVE_WORD)); px_itoa(g_w.wave, buf + strlen(TR(STR_WAVE_WORD)));
   px_textCenter(g, SCREEN_W / 2, by + 130, buf, C_TEXT_DIM, 3);
 
-  strcpy(buf, "KILLS "); px_itoa(g_w.score, buf + 6);
+  strcpy(buf, TR(STR_KILLS)); px_itoa(g_w.score, buf + strlen(TR(STR_KILLS)));
   px_textCenter(g, SCREEN_W / 2, by + 170, buf, C_TEXT_DIM, 3);
 
-  px_textCenter(g, SCREEN_W / 2, by + 230, "TAP TO RESTART", C_BTN_HI, 3);
+  px_textCenter(g, SCREEN_W / 2, by + 230, TR(STR_TAP_RESTART), C_BTN_HI, 3);
 }
 
 // ── 开局提示（第一次进游戏时告诉玩家怎么玩）──────────────────────
 static void drawReadyHint(M5GFX* g) {
-  const char* s = "TAP GRASS TO BUILD TOWER";
+  const char* s = TR(STR_READY_HINT);
   const int w = px_textWidth(s, 2), h = FONT_H * 2;
   const int x = (SCREEN_W - w) / 2, y = SCREEN_H - h - 14;
   g->fillRect(x - 8, y - 6, w + 16, h + 12, C_UI_BG);
@@ -796,12 +823,12 @@ static void drawSelNode(M5GFX* g, int i) {
 // ── 关卡选择（v0.2.0）：5×2 节点图，锁定=灰+锁，通关=金，当前=绿框 ─
 static void drawLevelSelect(M5GFX* g) {
   g->fillScreen(C_BG);
-  px_textCenter(g, SCREEN_W / 2, 36, "SELECT LEVEL", C_TEXT, 4);
+  px_textCenter(g, SCREEN_W / 2, 36, TR(STR_SELECT), C_TEXT, 4);
 
   for (int i = 0; i < LEVEL_COUNT; ++i) drawSelNode(g, i);
 
   px_textCenter(g, SCREEN_W / 2, selNodeY(LEVEL_COUNT - 1) + SEL_NODE_H + 16,
-                "CLEAR A LEVEL TO UNLOCK THE NEXT", C_TEXT_DIM, 2);
+                TR(STR_UNLOCK_HINT), C_TEXT_DIM, 2);
 
   // v0.3.1：右下角静音开关（喇叭+斜杠=静音；选中态红圈）
   drawMuteBtn(g);
@@ -818,21 +845,168 @@ static void drawLevelClear(M5GFX* g) {
   g->drawRect(bx, by, bw, bh, C_GOLD);
   g->drawRect(bx + 3, by + 3, bw - 6, bh - 6, C_GOLD);
 
-  px_textCenter(g, SCREEN_W / 2, by + 30, "LEVEL CLEAR", C_GOLD, 6);
+  px_textCenter(g, SCREEN_W / 2, by + 30, TR(STR_LEVEL_CLEAR), C_GOLD, 6);
   px_textCenter(g, SCREEN_W / 2, by + 108, LV().name, C_TEXT, 3);
 
   // v0.3.0：三颗大星居中（本次评级点亮，历史最高见选关界面）
   drawStarRow(g, SCREEN_W / 2, by + 160, 3, g_stars[g_lv], 14);
 
-  char buf[32];
-  strcpy(buf, "BOSS DOWN: "); strcat(buf, LV().boss_name);
+  char buf[64];
+  strcpy(buf, TR(STR_BOSS_DOWN)); strncat(buf, LV().boss_name,
+          sizeof(buf) - strlen(buf) - 1);
   px_textCenter(g, SCREEN_W / 2, by + 196, buf, C_ENEMY_BOSS, 2);
 
-  strcpy(buf, "KILLS "); px_itoa(g_w.score, buf + 6);
-  strcat(buf, "  GOLD "); char g2[8]; px_itoa(g_w.gold, g2); strcat(buf, g2);
+  strcpy(buf, TR(STR_KILLS)); px_itoa(g_w.score, buf + strlen(TR(STR_KILLS)));
+  strcat(buf, " "); strcat(buf, TR(STR_GOLD_WORD));
+  char g2[8]; px_itoa(g_w.gold, g2); strcat(buf, g2);
   px_textCenter(g, SCREEN_W / 2, by + 230, buf, C_TEXT_DIM, 2);
 
+  // v0.4.2：L10 通关后加"无尽模式"入口（引擎早已就绪，只缺这个按钮）
+  if (g_lv + 1 >= LEVEL_COUNT) {
+    const int ex = ENDLESS_BTN_X, ey = ENDLESS_BTN_Y;
+    g->fillRect(ex, ey, ENDLESS_BTN_W, ENDLESS_BTN_H, C_SLOT_BG);
+    g->drawRect(ex, ey, ENDLESS_BTN_W, ENDLESS_BTN_H, C_HP_FULL);
+    g->drawRect(ex + 3, ey + 3, ENDLESS_BTN_W - 6, ENDLESS_BTN_H - 6, C_HP_FULL);
+    px_textCenter(g, ex + ENDLESS_BTN_W / 2, ey + 14, TR(STR_ENDLESS), C_HP_FULL, 3);
+    px_textCenter(g, ex + ENDLESS_BTN_W / 2, ey + 46, TR(STR_ENDLESS_DESC), C_TEXT_DIM, 1);
+  }
+
   px_textCenter(g, SCREEN_W / 2, by + 270,
-                (g_lv + 1 < LEVEL_COUNT) ? "TAP FOR NEXT LEVEL" : "ALL CLEAR - TAP TO REPLAY",
+                (g_lv + 1 < LEVEL_COUNT) ? TR(STR_TAP_NEXT) : TR(STR_ALL_CLEAR),
                 C_BTN_HI, 3);
+}
+
+// ── v0.4.2 标题界面 ───────────────────────────────────────────────
+// 开机第一屏：像素大标题 + 版本 + 语言选择（EN/中文，NVS 记忆）+ 点击开始。
+// 语言按钮几何（render 画 / actions 命中，唯一真源同 MUTE_BTN 惯例）
+#define LANG_BTN_Y  330
+#define LANG_BTN_H  56
+#define LANG_EN_X   430
+#define LANG_CN_X   650
+#define LANG_BTN_W  200
+
+// v0.4.2：无尽模式入口按钮（L10 通关画面面板下方；actions 命中共用）
+// （几何宏已前置到文件头，供 drawLevelClear 使用）
+
+// 彩虹像素字：逐字母循环取色（先画 6px 黑色投影，再画彩色本体）
+static void drawRainbow(M5GFX* g, int cx, int y, const char* s, int scale,
+                        const uint16_t* cols, int ncol) {
+  const int adv = (FONT_W + 1) * scale;
+  const int w = px_textWidth(s, scale);
+  int x = cx - w / 2, i = 0;
+  px_textCenter(g, cx + 6, y + 6, s, C_BG, scale);       // 投影（右下 6px）
+  while (*s) {
+    if ((uint8_t)*s >= 0x80) {                           // 中文 16px：单色金
+      px_cnChar(g, x, y + (FONT_H * scale - CN_FONT_H) / 2, s, C_GOLD);
+      s += 3; x += CN_ADV; continue;
+    }
+    px_char(g, x, y, *s++, cols[i % ncol], scale);
+    x += adv; ++i;
+  }
+}
+
+static void drawTitle(M5GFX* g) {
+  g->fillScreen(C_BG);
+
+  // 像素星空：确定性伪随机点（坐标哈希，不用随机库——构建可复现）
+  for (int i = 0; i < 90; ++i) {
+    const int x = (i * 137 + 61) % SCREEN_W;
+    const int y = (i * 89 + 23) % (int)(MAP_TOP * 3);
+    const uint16_t c = (i % 5 == 0) ? C_GOLD : (i % 3 == 0 ? C_TEXT_DIM : C_GRASS_EDGE);
+    g->fillRect(x, y, 3, 3, c);
+  }
+
+  // 大标题：两行彩虹像素字（英文专名不翻译；中文模式加一行"像素塔防"）
+  static const uint16_t RC[8] = { C_BAD, C_GOLD, C_HP_FULL, C_TOWER_FRO,
+                                  C_TEXT, C_ENEMY_BOSS, C_TOWER_CAN, C_TOWER_LASER };
+  drawRainbow(g, SCREEN_W / 2, 110, "PIXEL TOWER", 7, RC, 8);
+  drawRainbow(g, SCREEN_W / 2, 180, "DEFENSE", 7, RC, 8);
+  if (langCN()) px_textCenter(g, SCREEN_W / 2, 252, "像素塔防", C_GOLD, 2);
+
+  // 版本号（金色，v0.4.2 起每次发版手改这里 + banner + publish.yaml）
+  char vb[24]; strcpy(vb, "v0.4.2");
+  px_textCenter(g, SCREEN_W / 2, 285, vb, C_GOLD, 3);
+
+  // 语言按钮：当前语言金色高亮
+  for (int i = 0; i < LANG_COUNT; ++i) {
+    const int bx = (i == LANG_EN) ? LANG_EN_X : LANG_CN_X;
+    const bool cur = ((int)g_lang == i);
+    g->fillRect(bx, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, C_SLOT_BG);
+    g->drawRect(bx, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, cur ? C_GOLD : C_GRASS_EDGE);
+    if (cur) g->drawRect(bx + 3, LANG_BTN_Y + 3, LANG_BTN_W - 6, LANG_BTN_H - 6, C_GOLD);
+    const char* label = (i == LANG_EN) ? "ENGLISH" : "中文";
+    px_textCenter(g, bx + LANG_BTN_W / 2, LANG_BTN_Y + 20, label,
+                  cur ? C_TEXT : C_TEXT_DIM, 2);
+  }
+  px_text(g, 360, LANG_BTN_Y + 20, TR(STR_LANG), C_TEXT_DIM, 2);
+
+  // 装饰带：几座塔剪影 + 小兵 + 地面线（全部矩形，复用塔的配色语言）
+  const int gy = 500;
+  g->fillRect(0, gy + 44, SCREEN_W, 4, C_GRASS_EDGE);
+  for (int i = 0; i < 5; ++i) {                          // 塔剪影（间隔排布）
+    const int tx = 300 + i * 170, ty = gy + 10;
+    const uint16_t col = towerColor(i == 4 ? 4 : i % 4);
+    g->fillRect(tx + 8, ty + 18, 24, 22, C_TOWER_BASE);
+    g->fillRect(tx + 12, ty + 6, 16, 20, col);
+    if (i % 4 == 1) g->fillRect(tx + 22, ty + 10, 12, 5, col);      // 炮管
+    else if (i % 4 == 2) { g->fillRect(tx + 15, ty, 5, 28, col);
+                           g->fillRect(tx + 8, ty + 10, 20, 5, col); }
+    else g->fillRect(tx + 17, ty, 5, 26, col);                       // 枪管
+  }
+  for (int i = 0; i < 4; ++i) {                          // 小兵剪影（从右向左）
+    const int ex = 1120 - i * 90, ey = gy + 22;
+    g->fillRect(ex, ey, 18, 18, i == 3 ? C_ENEMY_BOSS : (i & 1 ? C_ENEMY_A : C_ENEMY_B));
+    g->drawRect(ex, ey, 18, 18, C_BG);
+    g->fillRect(ex + 4, ey + 5, 4, 4, C_BG);
+    g->fillRect(ex + 10, ey + 5, 4, 4, C_BG);
+    if (i == 3) { g->fillRect(ex - 4, ey - 6, 6, 6, C_ENEMY_BOSS);   // 王冠尖
+                  g->fillRect(ex + 16, ey - 6, 6, 6, C_ENEMY_BOSS); }
+  }
+
+  // 开始提示（闪烁感：双色叠字）
+  px_textCenter(g, SCREEN_W / 2, 580, TR(STR_TITLE_HINT), C_BTN_HI, 3);
+  px_textCenter(g, SCREEN_W / 2 - 3, 580, TR(STR_TITLE_HINT), C_TEXT_DIM, 3);
+
+  // 底部：仓库地址（开源项目惯例）
+  px_textCenter(g, SCREEN_W / 2, SCREEN_H - 26,
+                "github.com/andjiang0083/pixel-tower-defense", C_TEXT_DIM, 1);
+}
+
+// ── v0.4.2 首次引导 overlay：三步教学（actions.h 推进）────────────
+// NVS "onboarded" 记住已完成；之后永不弹出（老玩家不被教程骚扰）。
+static void drawOnboard(M5GFX* g, int step) {
+  const char* s = (step == 1) ? TR(STR_ONBOARD_1) :
+                  (step == 2) ? TR(STR_ONBOARD_2) : TR(STR_ONBOARD_3);
+  const int bw = 820, bh = 130;
+  const int bx = (SCREEN_W - bw) / 2, by = SCREEN_H - bh - 150;
+  // 半透明感压暗（稀疏暗块，同 Game Over 手法）
+  for (int y = 0; y < SCREEN_H; y += 8)
+    for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
+  g->fillRect(bx, by, bw, bh, C_UI_BG);
+  g->drawRect(bx, by, bw, bh, C_BTN_HI);
+  g->drawRect(bx + 3, by + 3, bw - 6, bh - 6, C_BTN_HI);
+  px_textCenter(g, SCREEN_W / 2, by + 26, s, C_TEXT, 2);
+  px_textCenter(g, SCREEN_W / 2, by + 74, TR(STR_ONBOARD_TAP), C_BTN_HI, 2);
+}
+
+// ── v0.4.2 SIEGE 封锁区渲染：闪烁红框 + 井字封号 ──────────────────
+// 几何与 game.h siegeBlocksPx 同源（g_w.siegeX/Y/R）。
+static void drawSiege(M5GFX* g) {
+  if (g_w.siegeMs == 0) return;
+  const int x0 = (int)g_w.siegeX - g_w.siegeR, y0 = (int)g_w.siegeY - g_w.siegeR;
+  const int w = g_w.siegeR * 2;
+  const bool blink = (millis() / 200) & 1;              // 5Hz 危险闪烁
+  const uint16_t c = blink ? C_BAD : C_WARN;
+  g->drawRect(x0, y0, w, w, c);
+  g->drawRect(x0 + 4, y0 + 4, w - 8, w - 8, c);
+  for (int i = 0; i < 36; i += 6) {                     // 四角加粗（像素风）
+    g->fillRect(x0 - 2, y0 + i, 6, 6, c);
+    g->fillRect(x0 + w - 4, y0 + i, 6, 6, c);
+    g->fillRect(x0 + i, y0 - 2, 6, 6, c);
+    g->fillRect(x0 + i, y0 + w - 4, 6, 6, c);
+  }
+  const int cx = (int)g_w.siegeX, cy = (int)g_w.siegeY;  // 井字 = 禁止建造
+  g->drawRect(cx - 16, cy - 16, 32, 32, c);
+  g->fillRect(cx - 2, cy - 14, 4, 28, c);
+  g->fillRect(cx - 14, cy - 2, 28, 4, c);
 }

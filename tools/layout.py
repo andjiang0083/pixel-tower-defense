@@ -88,12 +88,18 @@ AB_HEAL,  AB_BROOD = 1, 2          # 旧：自愈光环 / 产卵
 AB_SPLIT, AB_HORN  = 4, 8          # 💀死亡分裂：打爆爆出小兵 / 📢集结号角：全场加速
 AB_EMP,   AB_GREED = 16, 32       # 🔇塔静默：附近2座塔哑火 / 💰抢钱：受击偷金
 AB_MOLT,  AB_GHOST = 64, 128       # 🛡蜕壳：半血狂暴 / 🌫隐身：周期性不可锁定
+AB_SIEGE             = 256         # 🚧 v0.4.2 封锁建造区：王周围一圈禁建塔数秒
 SPLIT_SIZE          = 3             # 💀 分裂体数量（+wave/8 渐增）
 HORN_MS, HORN_BOOST_PCT, HORN_DUR_MS = 8000, 45, 3000   # 📢 +45%速 持续3s
 EMP_MS, EMP_TOWERS, EMP_DUR_MS = 9000, 2, 4000           # 🔇 哑火最近2塔 4s
 GREED_HITS, GREED_AMT, GREED_CAP_PCT = 8, 15, 20         # 💰 每受击8次偷$15，封顶金20%
 MOLT_PCT, MOLT_SPD_PCT, MOLT_SIZE_DROP = 50, 40, 8        # 🛡 HP<50%蜕壳：+40%速 -8px 甲归零
 GHOST_MS, GHOST_DUR_MS = 7000, 1500                        # 🌫 每7s隐身1.5s（塔丢目标）
+# 🚧 v0.4.2 SIEGE：r=180px（约4.5格）封锁——王贴脸前最后一拍干扰，
+#    逼玩家提前布阵而不是临场补塔。半径再大就覆盖半张图（烦扰 > 挑战）。
+# ⚠️ 持续时间与节拍必须分开：曾把两者都设 4000 → 王每 4s 重放、封锁
+#    几乎永久（仿真实测 siegeMs 归零前 1 帧就被下一拍重置）。
+SIEGE_MS, SIEGE_R, SIEGE_IV = 3500, 180, 10000
 # mid-boss：一关多王——半程波出缩小版王（hp×0.45 size-8 gold×0.6）
 MID_HP_PCT, MID_GOLD_PCT, MID_SIZE_DROP = 45, 60, 8
 # ── v0.4 无尽模式（L10 CLEAR → TERMINAL 图无限刷）─────────────────
@@ -254,7 +260,7 @@ LEVELS = [
  # ⚠️ 排序规矩：**双路图是难度乘数**（两个独立前线，单点集群防守失效），
  #    必须排在单路图之后——L13 首版放双路，bot 波7 就被打穿（43 只过线）。
  dict(id=11, name="GLASS FIELDS", theme=0, waves=15, diff=2.00, elite_from=4,
-      boss=("GLASS TITAN", 9.0, 28, 60, 4, 260, 10, AB_SPLIT | AB_HORN),
+      boss=("GLASS TITAN", 9.0, 28, 60, 4, 260, 10, AB_SPLIT | AB_HORN | AB_SIEGE),  # 🚧 v0.4.2 首现封锁
       mid=[7], band=3,
       routes=[snake([2,4,6,8,10,12])],
       kinds=[0,1,2,8]),
@@ -401,7 +407,7 @@ def validate():
             assert 1 <= m < lv["waves"], "L%d mid wave %d out of range" % (lv["id"], m)
         assert len(set(mids)) == len(mids), "L%d mid waves dup" % lv["id"]
         # v0.4 ability 位掩码合法域（8技能，uint16_t）
-        assert 0 <= lv["boss"][7] < 256, "L%d ability out of range" % lv["id"]
+        assert 0 <= lv["boss"][7] < 512, "L%d ability out of range" % lv["id"]
     assert len(LEVELS) == 20, "need exactly 20 levels"
     assert [l["id"] for l in LEVELS] == list(range(1, 21))
     ds = [l["diff"] for l in LEVELS]
@@ -488,6 +494,7 @@ def gen_header():
         ghi=GREED_HITS, gga=GREED_AMT, gccp=GREED_CAP_PCT,
         mpc=MOLT_PCT, msp=MOLT_SPD_PCT, msd=MOLT_SIZE_DROP,
         gms=GHOST_MS, gdms=GHOST_DUR_MS,
+        absg=AB_SIEGE, sms=SIEGE_MS, sr=SIEGE_R, siv=SIEGE_IV,   # v0.4.2 SIEGE
         midh=MID_HP_PCT, midg=MID_GOLD_PCT, mids=MID_SIZE_DROP,
         edp=ENDLESS_DIFF_PCT, erw=ENDLESS_ROUND_WAVES, eme=ENDLESS_MINI_EVERY,
         enw=ENDLESS_WAVES,
@@ -625,6 +632,10 @@ static const uint8_t TOWER_AIR_OK[TT_COUNT] = { %(air)s };
 #define AB_GREED  %(abg)d           // 💰 steal gold on hit
 #define AB_MOLT   %(abm)d           // 🛡 shed armor at half hp, go feral
 #define AB_GHOST  %(abgh)d          // 🌫 periodic untargetable ghost
+#define AB_SIEGE  %(absg)d          // 🚧 v0.4.2: lock build zone near boss
+#define SIEGE_MS  %(sms)d           // 🚧 build-zone lock duration
+#define SIEGE_IV  %(siv)d           // 🚧 lock cadence (must be > SIEGE_MS)
+#define SIEGE_R   %(sr)d            // 🚧 lock radius px (4.5 cells)
 #define SPLIT_SIZE        %(sps)d   // split minions base count (+wave/8)
 #define HORN_MS         %(hms2)d    // horn cadence
 #define HORN_BOOST_PCT  %(hbpp)d    // +%% speed while boosted
@@ -655,7 +666,8 @@ struct LevelDef {
   const char* name; int16_t wp_start; uint8_t routes_n; float diff;
   uint8_t waves; uint8_t theme; int8_t elite_from; int8_t kinds[6];
   const char* boss_name; float boss_hp_mult; int16_t boss_speed;
-  uint8_t boss_size, boss_armor; int16_t boss_gold; uint8_t boss_leak, ability;
+  uint8_t boss_size, boss_armor; int16_t boss_gold; uint8_t boss_leak;
+  uint16_t ability;   // v0.4.2: 技能位掩码升 16 位（AB_SIEGE=256 是第 9 位）
   uint8_t boss_count;                  // twin bosses spawn together (last wave)
   uint8_t mid[2];                      // v0.4: mid-boss waves (0 = none)
 };

@@ -24,11 +24,11 @@ cd pixel-tower-defense
 pio run -e tab5
 ```
 
-v0.4.1 的期望输出：
+v0.4.2 的期望输出：
 
 ```
-RAM:   [=         ]   6.9% (used 35472 bytes from 512000 bytes)
-Flash: [===       ]  26.0% (used 819150 bytes from 3145728 bytes)
+RAM:   [=         ]   7.3% (used 37248 bytes from 512000 bytes)
+Flash: [===       ]  26.5% (used 833808 bytes from 3145728 bytes)
 ```
 
 `platformio.ini` 里有几项**别顺手"整理"掉**：
@@ -39,6 +39,16 @@ Flash: [===       ]  26.0% (used 819150 bytes from 3145728 bytes)
 | `board_build.psram = enable`，200 MHz | 帧缓冲在 PSRAM。不满足时 M5GFX 直接报 `M5Tab5 need PSRAM SPEED 200MHz` |
 | `src/sdkconfig.h` | 覆盖 Arduino 库默认的 PSRAM 速度 |
 | `board_build.partitions = app3M_fat9M_16MB.csv` | 3 MB 的 app 分区 |
+
+### 依赖资产存档（2026-10-12）
+
+两个带日期的 release 资产已存档到 `~/esp32/vendor/`（30.6 MB + 33 MB）。
+哪天构建报 404，从那里恢复：
+
+| 资产 | sha256 |
+|---|---|
+| `esp32-core-3.3.10.zip` | `05cbb2cac185265b8b64f1dfa6982e4ae6d57db67f690a291f119a0b2b6aaab2` |
+| `launcher_tab5_esp32-arduino-libs-20260519-233957.tar.xz` | `6088ab7295e6d976d0609fc64b215f101ceaef90f660b6ae088d5de1e1b23f95` |
 
 ## 3. USB 刷机
 
@@ -78,9 +88,9 @@ PlatformIO 12+ 已经直接产出这个文件：
 
 ```bash
 cp .pio/build/tab5/firmware.factory.bin \
-   releases/pixel-tower-defense-v0.4.1-tab5-merged.bin
-shasum -a 256 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin \
-  > releases/pixel-tower-defense-v0.4.1-tab5-merged.bin.sha256
+   releases/pixel-tower-defense-v0.4.2-tab5-merged.bin
+shasum -a 256 releases/pixel-tower-defense-v0.4.2-tab5-merged.bin \
+  > releases/pixel-tower-defense-v0.4.2-tab5-merged.bin.sha256
 ```
 
 发布前先验各段位置（这一步就是用来拦"黑屏"的）：
@@ -88,7 +98,7 @@ shasum -a 256 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin \
 ```bash
 python3 - <<'PY'
 import struct, pathlib
-b = pathlib.Path('releases/pixel-tower-defense-v0.4.1-tab5-merged.bin').read_bytes()
+b = pathlib.Path('releases/pixel-tower-defense-v0.4.2-tab5-merged.bin').read_bytes()
 def hdr(off):
     return dict(magic=hex(b[off]), nseg=b[off+1], mode=b[off+2],
                 size_freq=hex(b[off+3]), entry=hex(struct.unpack_from('<I', b, off+4)[0]))
@@ -100,19 +110,20 @@ print('app        @0x10000', hdr(0x10000))  # magic 0xe9，mode 2 = DIO
 PY
 ```
 
-v0.4.1 镜像的期望输出：
+v0.4.2 镜像的期望输出：
 
 ```
-len 929360
+len 944272
 bootloader @0x2000 {'magic': '0xe9', 'nseg': 3, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff29ed0'}
 partitions @0x8000 aa50
 boot_app0  @0xe000 0x1
 app        @0x10000 {'magic': '0xe9', 'nseg': 7, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff00c6a'}
 ```
-sha256 `d018587ba897a69b27e7f44a7918679ef52391eec8fcf3e183dbc50cd077aa81`
+sha256 `b5e701102b23d22321671cb6e642f6231d2e831efe50200591448da94884d5f5`
 
 真要手搓（工程不产出 `factory.bin`，或编译后的 size 检查步骤被环境拦截——
-v0.4.1 就是在编译+链接成功后被拦截，按下面两步搓的）：
+v0.4.1 和 v0.4.2 都是在编译+链接成功后被拦截，按下面两步搓的。注意 esptool 用
+PlatformIO penv 自带的那个：`~/.platformio/penv/bin/python -m esptool ...`）：
 
 ```bash
 python3 ~/.platformio/penv/bin/esptool --chip esp32p4 elf2image \
@@ -143,6 +154,7 @@ python3 ~/.platformio/penv/bin/esptool --chip esp32p4 merge-bin \
 
 ```bash
 python3 tools/gen_font.py     # → src/pixel_font.h   （95 个手写字形）
+python3 tools/gen_cnfont.py   # → src/cn_font.h      （16×16 中文，需 Pillow；CN_FONT 环境变量可指定字体）
 python3 tools/layout.py       # → src/config_gen.h + preview.png
 python3 tools/gen_sfx.py      # → src/sfx_data.h     （全部 PCM，合成而来）
 ```
@@ -158,7 +170,7 @@ python3 tools/gen_sfx.py      # → src/sfx_data.h     （全部 PCM，合成而
 
 ```bash
 g++ -std=c++17 -O2 -I sim/compat -I src sim/run.cpp -o sim/sim && ./sim/sim
-# → 178 passed, 0 failed
+# → 203 passed, 0 failed
 ```
 
 顺手能用的几条：

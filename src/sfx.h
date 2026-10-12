@@ -15,8 +15,10 @@
 #include "sfx_data.h"
 
 // ── 音效 ID（与 sfx_data.h 的表一一对应）─────────────────────────
+// ⚠️ GUN/GUN2/GUN3 必须 ID 连续（game.h 用 SFXID_GUN + variant 轮换）
 enum SfxId : uint8_t {
-  SFXID_GUN = 0, SFXID_CANNON, SFXID_BOOM, SFXID_LASER, SFXID_FROST,
+  SFXID_GUN = 0, SFXID_GUN2, SFXID_GUN3,      // v0.4.2：机枪三音色（基频×1/×1.25/×1.5）
+  SFXID_CANNON, SFXID_BOOM, SFXID_LASER, SFXID_FROST,
   SFXID_COIN,  SFXID_HIT,     SFXID_LEAK, SFXID_CLEAR, SFXID_ROTOR,
   SFXID_HORN,  SFXID_EMP,                       // v0.4：号角/EMP
   SFXID_COUNT
@@ -29,7 +31,8 @@ static uint8_t  s_qHead = 0, s_qTail = 0;
 
 // 每音效最小间隔 ms（"不能太吵"第一道闸：同种音高频去重）
 static const uint16_t SFX_MIN_IV[SFXID_COUNT] = {
-  /*GUN*/80, /*CAN*/120, /*BOOM*/140, /*LASER*/90, /*FROST*/350,
+  /*GUN*/80, /*GUN2*/80, /*GUN3*/80,   // v0.4.2：三音色共用同一闸（换皮不换吵）
+  /*CAN*/120, /*BOOM*/140, /*LASER*/90, /*FROST*/350,
   /*COIN*/120, /*HIT*/70, /*LEAK*/250, /*CLEAR*/0,   /*ROTOR*/380,
   /*HORN*/400, /*EMP*/500                          // v0.4：技能音低频事件，间隔防吵
 };
@@ -69,6 +72,8 @@ static void sfxPump(void) {
     s_qTail = (uint8_t)((s_qTail + 1) % SFX_QUEUE);
     switch (id) {
       case SFXID_GUN:    M5.Speaker.playRaw(SFX_GUN,   SFX_GUN_LEN,   SFX_SR, false, 1, -1, false); break;
+      case SFXID_GUN2:   M5.Speaker.playRaw(SFX_GUN2,  SFX_GUN2_LEN,  SFX_SR, false, 1, -1, false); break;
+      case SFXID_GUN3:   M5.Speaker.playRaw(SFX_GUN3,  SFX_GUN3_LEN,  SFX_SR, false, 1, -1, false); break;
       case SFXID_CANNON: M5.Speaker.playRaw(SFX_CANNON, SFX_CANNON_LEN,SFX_SR, false, 1, -1, false); break;
       case SFXID_BOOM:   M5.Speaker.playRaw(SFX_BOOM,   SFX_BOOM_LEN,  SFX_SR, false, 1, -1, false); break;
       case SFXID_LASER:  M5.Speaker.playRaw(SFX_LASER,  SFX_LASER_LEN, SFX_SR, false, 1, -1, false); break;

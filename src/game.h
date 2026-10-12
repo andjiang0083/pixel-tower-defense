@@ -19,11 +19,12 @@
 #include "sfx.h"   // v0.3.1：音效事件投递（只 post，不碰音频 API）
 // ── 游戏状态机 ─────────────────────────────────────────────────────
 enum GameState : uint8_t {
-  ST_SEL = 0,     // 关卡选择界面
-  ST_READY,       // 波次间隙：等玩家点 NEXT WAVE
-  ST_WAVE,        // 波次进行中（还在刷怪或场上仍有敌人）
-  ST_CLEAR,       // 本关通关：点屏幕回选关
-  ST_GAMEOVER,    // 生命归零：点屏幕任意处重开本关
+  ST_TITLE = 0,  // v0.4.2：标题界面（开机第一屏：标题/版本/语言选择）
+  ST_SEL,        // 关卡选择界面
+  ST_READY,      // 波次间隙：等玩家点 NEXT WAVE
+  ST_WAVE,       // 波次进行中（还在刷怪或场上仍有敌人）
+  ST_CLEAR,      // 本关通关：点屏幕回选关
+  ST_GAMEOVER,   // 生命归零：点屏幕任意处重开本关
 };
 
 // ── 实体结构体 ─────────────────────────────────────────────────────
@@ -45,10 +46,10 @@ struct Enemy {
   uint16_t slowMs;     // 冰霜减速剩余毫秒（>0 时按 FROST_SLOW_PCT%）
   uint32_t abilityMs;  // HEALER/BOSS 技能节拍计时器（BOSS=最早到期技能位，见 abNextMs）
   // v0.4.1：每个 BOSS 主动技能位独立倒计时（0=HEAL 1=BROOD 2=SPLIT 3=HORN
-  //   4=EMP 5=GREED 6=MOLT 7=GHOST；未设置位=0xFFFFFFFF 永不到期）。
+  //   4=EMP 5=GREED 6=MOLT 7=GHOST 8=SIEGE；未设置位=0xFFFFFFFF 永不到期）。
   //   旧实现只有一个 abilityMs：到期后所有技能同帧齐放、节拍被 if 链最后
   //   一个常量劫持（L6 治疗变 7s/次、L10 五技能同 tick）——见 FIXLOG-v0.4.1。
-  uint32_t abNextMs[8];
+  uint32_t abNextMs[9];   // v0.4.2：扩到 9 位（新增 bit8 = SIEGE 封锁建造区）
   uint8_t  leakDmg;   // 漏怪扣血（BOSS/ELITE 逐关覆盖，不查兵种表）
   // ── v0.4 BOSS 技能状态（memset 清零 = 全默认关，安全）──
   uint16_t ghostMs;   // 🌫 >0 = 隐身中（塔不可锁定）
@@ -143,6 +144,11 @@ struct World {
 
   // ── v0.4 无尽模式状态（levelLoad memset 清零 = 正常关）──
   uint8_t  endless;                  // 1 = 无尽（TERMINAL 图无限刷）
+
+  // ── v0.4.2 SIEGE：BOSS 封锁建造区（全局一个即可，同帧只可能一个王在放）──
+  uint16_t siegeMs;                  // >0 = 封锁生效中
+  float    siegeX, siegeY;           // 封锁中心（BOSS 位置）
+  int16_t  siegeR;                   // 封锁半径 px
 };
 
 static World g_w;
@@ -152,6 +158,8 @@ static uint32_t g_unlocked = 0x0001;   // bit i = 第 i+1 关可选（v0.4：20 
 static uint32_t g_cleared  = 0;        // bit i = 第 i+1 关已通关
 static uint8_t  g_stars[LEVEL_COUNT];  // v0.3.0：每关历史最高星级 0..3
 static int8_t   g_lv = 0;              // 当前关卡下标 0..LEVEL_COUNT-1
+// v0.4.2：无尽模式历史最高波次（NVS "endbest"；HUD 显示，死亡时结算）
+static int16_t  g_endBest = 0;
 
 static inline const LevelDef& LV(void) { return LEVELS[g_lv]; }
 // ── v0.4：无尽模式下 waves/diff 不再是常量——一切难度读数走这两个 helper ──
@@ -177,6 +185,8 @@ static inline BossPlan bossForWave(void) {
 }
 // v0.4：技能触发日志（每关重开清零；仿真断言"每个技能至少响一次"）
 static uint16_t g_abLog = 0;
+// v0.4.2：机枪出膛音色轮换位（0/1/2 → GUN/GUN2/GUN3，见开火处）
+static uint8_t s_gunVariant = 0;
 static inline bool levelUnlocked(int i) { return (g_unlocked >> i) & 1; }
 static inline bool levelCleared(int i) { return (g_cleared >> i) & 1; }
 
@@ -254,7 +264,7 @@ static inline void markDirtyPx(float x, float y, int half) {
 
 // v0.4：前向声明——BOSS 技能函数（定义在建造/卖出段之后，共用 addFx/splash）
 static void addFx(float x, float y, uint8_t kind);
-static inline uint8_t bossAbilityOf(const Enemy& e);   // v0.4.1：spawnKind 错峰起手要用
+static inline uint16_t bossAbilityOf(const Enemy& e);   // v0.4.1：spawnKind 错峰起手要用（v0.4.2 升 16 位：第 9 技能位 SIEGE）
 
 // ── 装载一关（选关/重开共用）：清场 + 铺路，回到 ST_READY ────────
 static void levelLoad(int idx) {
@@ -340,10 +350,12 @@ static void spawnKind(int i, int kind, uint8_t route, bool elite, bool mini = fa
     if (mini) e.speed = (uint16_t)(L.boss_speed * 1.2f);   // 小王跑快点，别当木桩
     // v0.4.1：各主动技能位错峰起手（+1000ms 起，每位再 +350ms）——
     // 旧实现全部技能共享一个起手时间，配合"到期齐放"=开场技能风暴。
-    for (int i = 0; i < 8; ++i) e.abNextMs[i] = 0xFFFFFFFFu;   // 未设置位永不到期
+    for (int i = 0; i < 9; ++i) e.abNextMs[i] = 0xFFFFFFFFu;   // 未设置位永不到期
     {
-      const uint8_t ab0 = bossAbilityOf(e);   // mini 王只带第一个（预告演出）
-      for (int i = 0; i < 8; ++i)
+      const uint16_t ab0 = bossAbilityOf(e);   // mini 王只带第一个（预告演出）
+                                              // ⚠️ 必须 16 位：L11 ability=268，
+                                              // uint8_t 会把 SIEGE(bit8) 截掉 → 王永不放封锁
+      for (int i = 0; i < 9; ++i)
         if (ab0 & (1u << i)) e.abNextMs[i] = millis() + 1000 + (uint32_t)i * 350;
     }
     e.abilityMs = millis() + 1000;          // 门控初值（随后=最早到期技能位）
@@ -491,10 +503,30 @@ static void ghostTrigger(Enemy& boss) {
   boss.ghostMs = GHOST_DUR_MS;
 }
 
+// ── v0.4.2 🚧 SIEGE：以王为中心封锁建造区数秒（圈内建塔被拒）───────
+// 空间型技能：逼玩家在王的推进路线上提前布阵，而不是等它贴脸再补塔。
+// 全局单实例（同帧只可能一个王在放；多王关轮流放也自然错峰）。
+static void siegeTrigger(Enemy& boss) {
+  g_abLog |= AB_SIEGE;
+  sfxPost(SFXID_EMP);                     // 封锁=EMP 变体（低频事件，音色够用）
+  g_w.siegeMs = SIEGE_MS;
+  g_w.siegeX = boss.x; g_w.siegeY = boss.y;
+  g_w.siegeR = SIEGE_R;
+  addFx(boss.x, boss.y, 8);               // kind=8 = 封锁红框（render）
+  g_w.hudDirty = true;                    // HUD 警示条刷新
+}
+
+// 某像素点是否处于封锁区（buildTower / 渲染共用）
+static inline bool siegeBlocksPx(float px, float py) {
+  if (g_w.siegeMs == 0) return false;
+  const float dx = px - g_w.siegeX, dy = py - g_w.siegeY;
+  return dx * dx + dy * dy <= (float)g_w.siegeR * g_w.siegeR;
+}
+
 // ── v0.4 受击被动统一入口：💰GREED 偷金 / 🛡MOLT 半血蜕壳 ──────────
 static void bossHurt(Enemy& e) {
   if (e.kind != K_BOSS || !e.active) return;
-  const uint8_t ab = LV().ability;      // 被动技：mini/真王都按关表（GREED/MOLT
+  const uint16_t ab = LV().ability;      // 被动技：mini/真王都按关表（GREED/MOLT
                                           // 是"受击才触发"，不构成兵潮风暴）
   if (ab & AB_GREED) greedHit(e);
   // ⚠️ MOLT 只在"还活着且真掉血"时蜕：死了就别再变异了
@@ -506,8 +538,8 @@ static void bossHurt(Enemy& e) {
 //    ⚠️ 绝不给 mini 续航/产兵技（HEAL/BROOD）：仿真实测 L8 w5 mini 带
 //    BROOD=半程产卵工厂，叠加压叠→同屏26只、bot 11塔饿死（难度失控）。
 //    优先级：号角/隐身/蜕壳/EMP/分裂（看得见、会结束）> 产卵/自愈。
-static inline uint8_t bossAbilityOf(const Enemy& e) {
-  const uint8_t ab = LV().ability;
+static inline uint16_t bossAbilityOf(const Enemy& e) {
+  const uint16_t ab = LV().ability;   // ⚠️ 必须 16 位：L11 ability=268（含 SIEGE bit8）
   if (!e.bossMini) return ab;                    // 真王：全套
   static const uint8_t PRIO[5] = { AB_HORN, AB_GHOST, AB_MOLT, AB_EMP, AB_SPLIT };
   for (int i = 0; i < 5; ++i) if (ab & PRIO[i]) return PRIO[i];
@@ -531,10 +563,10 @@ static void killEnemy(Enemy& e) {
 // 现在：到期哪个放哪个；abilityMs 只当"最早到期位"的门控复用。
 // mini 王节拍×2 保留（半程小王是预告演出，不能比真王还吵）。
 static void bossAbilities(Enemy& e, uint32_t now) {
-  const uint8_t ab = bossAbilityOf(e);   // v0.4：mini王只带第一个技能（预告演出）
+  const uint16_t ab = bossAbilityOf(e);   // v0.4：mini王只带第一个技能（预告演出）
   uint32_t earliest = 0xFFFFFFFFu;
-  for (int i = 0; i < 8; ++i) {
-    const uint8_t bit = (uint8_t)(1u << i);
+  for (int i = 0; i < 9; ++i) {
+    const uint16_t bit = (uint16_t)(1u << i);   // ⚠️ 必须 16 位：i=8 时 1u<<8=256，uint8_t 会截成 0
     if (!(ab & bit)) continue;                     // 未设置位：永不到期
     if (e.abNextMs[i] > now) {                     // 未到点：只跟踪最早到期位
       if (e.abNextMs[i] < earliest) earliest = e.abNextMs[i];
@@ -556,6 +588,7 @@ static void bossAbilities(Enemy& e, uint32_t now) {
       case AB_HORN:  hornBlast(e);   iv = HORN_MS;      break;
       case AB_EMP:   empBlast(e);    iv = EMP_MS;       break;
       case AB_GHOST: ghostTrigger(e); iv = GHOST_MS;    break;
+      case AB_SIEGE: siegeTrigger(e); iv = SIEGE_IV;    break;   // v0.4.2（节拍>持续，见 layout.py 注释）
       default: break;     // 被动技（SPLIT/GREED/MOLT）挂死亡/受击路径，不进节拍
     }
     if (e.bossMini) iv *= 2;                  // mini 王节拍×2（预告演出）
@@ -668,6 +701,9 @@ static bool buildTower(int col, int row, uint8_t type) {
   if ((unsigned)type >= TT_COUNT) return false;
   if (g_w.path[col][row] || g_w.occupied[col][row]) return false;
   if (g_w.blocked[col][row]) return false;            // v0.4：禁建岩层
+  // v0.4.2：SIEGE 封锁区——圈内一格都不能建（塔心判定）
+  if (siegeBlocksPx(col * CELL + CELL / 2.0f, MAP_TOP + row * CELL + CELL / 2.0f))
+    return false;
   const int cost = TOWER_TYPES[type].cost;
   if (g_w.gold < cost) return false;
 
@@ -768,6 +804,13 @@ static void healAllies(const Enemy& src, int rPx, int pct) {
 
 // ── 每帧逻辑更新：dtMs = 距上一帧毫秒（调用方限幅）──────────────
 static void gameUpdate(uint32_t dtMs) {
+  // v0.4.2：SIEGE 封锁倒计时是全局时钟——必须在状态门控**之前**递减，
+  // 否则通关/死亡 overlay（ST_CLEAR/GAMEOVER 下 gameUpdate 提前 return）
+  // 期间封锁框会永久闪烁。关卡状态不影响它到期。
+  if (g_w.siegeMs > 0) {
+    g_w.siegeMs = (uint16_t)(g_w.siegeMs > dtMs ? g_w.siegeMs - dtMs : 0);
+    if (g_w.siegeMs == 0) g_w.hudDirty = true;           // 警示条撤下
+  }
   if (g_w.state != ST_WAVE && g_w.state != ST_READY) return;
   if (g_w.selectedTower >= 0) return;   // 升级面板打开 = 世界暂停（触屏无实体键，弹层即暂停）
 
@@ -780,6 +823,11 @@ static void gameUpdate(uint32_t dtMs) {
     if (g_w.readyLeftMs == 0xFFFFFFFFu) g_w.readyLeftMs = AUTO_NEXT_MS;   // 首次进 READY：装载
     if (g_w.readyLeftMs > dtMs) g_w.readyLeftMs -= dtMs;
     else { startNextWave(); return; }                    // 归零 = 自动开波
+  }
+  // ── v0.4.2：无尽模式历史最高波次实时刷新（死亡/切语言时随落盘带走）──
+  if (g_w.endless && g_w.wave > g_endBest) {
+    g_endBest = (int16_t)g_w.wave;
+    g_w.hudDirty = true;
   }
   // ── 刷怪（虫群连发用更短间隔，视觉上才是"一群"）────────────
   if (g_w.state == ST_WAVE && g_w.toSpawn > 0 && now >= g_w.nextSpawnMs) {
@@ -951,7 +999,14 @@ static void gameUpdate(uint32_t dtMs) {
           bl.spawnDist2 = bestD2;
           bl.damage  = (uint16_t)towerDamage(t);
           bl.splashR = T.behavior == 1 ? (uint8_t)T.splash_r : 0;
-          sfxPost(T.behavior == 1 ? SFXID_CANNON : SFXID_GUN);   // v0.3.1 出膛声
+          // v0.4.2：机枪三种音色轮换（GUN/GUN2/GUN3 基频 ×1/×1.25/×1.5）——
+          // 旧版满场机枪同一音高，听起来像节拍器。轮换而非随机：可复现。
+          if (T.behavior == 1) {
+            sfxPost(SFXID_CANNON);
+          } else {
+            s_gunVariant = (uint8_t)((s_gunVariant + 1) % 3);
+            sfxPost((uint8_t)(SFXID_GUN + s_gunVariant));   // ID 连续：GUN=0,GUN2=1,GUN3=2
+          }
           break;
         }
       }

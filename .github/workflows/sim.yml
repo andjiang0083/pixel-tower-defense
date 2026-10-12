@@ -33,3 +33,11 @@ jobs:
         run: |
           python3 tools/gen_sfx.py
           git diff --exit-code src/sfx_data.h
+
+      # v0.4.2：中文字库（渲染需要 Pillow；ubuntu-latest 镜像自带 Noto CJK，
+      # gen_cnfont.py 的候选字体列表第一项即命中；缺字体时设 CN_FONT 指定）
+      - name: cn_font.h must match tools/gen_cnfont.py
+        run: |
+          pip install Pillow
+          python3 tools/gen_cnfont.py
+          git diff --exit-code src/cn_font.h

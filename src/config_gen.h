@@ -141,6 +141,10 @@ static const uint8_t TOWER_AIR_OK[TT_COUNT] = { 1, 0, 0, 0, 1 };
 #define AB_GREED  32           // 💰 steal gold on hit
 #define AB_MOLT   64           // 🛡 shed armor at half hp, go feral
 #define AB_GHOST  128          // 🌫 periodic untargetable ghost
+#define AB_SIEGE  256          // 🚧 v0.4.2: lock build zone near boss
+#define SIEGE_MS  3500           // 🚧 build-zone lock duration
+#define SIEGE_IV  10000           // 🚧 lock cadence (must be > SIEGE_MS)
+#define SIEGE_R   180            // 🚧 lock radius px (4.5 cells)
 #define SPLIT_SIZE        3   // split minions base count (+wave/8)
 #define HORN_MS         8000    // horn cadence
 #define HORN_BOOST_PCT  45    // +% speed while boosted
@@ -171,7 +175,8 @@ struct LevelDef {
   const char* name; int16_t wp_start; uint8_t routes_n; float diff;
   uint8_t waves; uint8_t theme; int8_t elite_from; int8_t kinds[6];
   const char* boss_name; float boss_hp_mult; int16_t boss_speed;
-  uint8_t boss_size, boss_armor; int16_t boss_gold; uint8_t boss_leak, ability;
+  uint8_t boss_size, boss_armor; int16_t boss_gold; uint8_t boss_leak;
+  uint16_t ability;   // v0.4.2: 技能位掩码升 16 位（AB_SIEGE=256 是第 9 位）
   uint8_t boss_count;                  // twin bosses spawn together (last wave)
   uint8_t mid[2];                      // v0.4: mid-boss waves (0 = none)
 };
@@ -186,7 +191,7 @@ static const LevelDef LEVELS[] = {
   { "FORKED CANYON", 66, 2, 1.65f, 10, 2, 7, { 0, 1, 4, 7, -1, -1 }, "TWIN PRO", 6.00f, 45, 48, 2, 250, 8, 14, 2, { 5, 0 } },  // L8
   { "MEAT GRINDER", 76, 1, 1.75f, 12, 3, 6, { 0, 1, 2, 8, 7, -1 }, "TWIN ELITES", 7.00f, 50, 48, 2, 280, 10, 112, 2, { 6, 0 } },  // L9
   { "TERMINAL", 91, 1, 1.95f, 15, 5, 4, { 0, 2, 8, 4, 6, 7 }, "THE END", 16.00f, 22, 72, 8, 350, 12, 23, 1, { 8, 12 } },  // L10
-  { "GLASS FIELDS", 106, 1, 2.00f, 15, 0, 4, { 0, 1, 2, 8, -1, -1 }, "GLASS TITAN", 9.00f, 28, 60, 4, 260, 10, 12, 1, { 7, 0 } },  // L11
+  { "GLASS FIELDS", 106, 1, 2.00f, 15, 0, 4, { 0, 1, 2, 8, -1, -1 }, "GLASS TITAN", 9.00f, 28, 60, 4, 260, 10, 268, 1, { 7, 0 } },  // L11
   { "HAIRPIN RIDGE", 119, 1, 2.05f, 15, 3, 4, { 0, 2, 4, 8, -1, -1 }, "RIDGE WARDEN", 10.00f, 26, 60, 6, 270, 10, 80, 1, { 6, 0 } },  // L12
   { "SAND COIL", 134, 1, 2.10f, 16, 2, 5, { 0, 2, 6, 8, -1, -1 }, "SAND COIL", 11.00f, 26, 64, 4, 320, 11, 130, 1, { 7, 0 } },  // L13
   { "CROSSING FIRE", 145, 2, 2.15f, 16, 2, 5, { 0, 1, 2, 7, 8, -1 }, "CROSSFIRE", 7.00f, 42, 52, 2, 300, 9, 44, 2, { 6, 11 } },  // L14

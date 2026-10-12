@@ -25,11 +25,11 @@ cd pixel-tower-defense
 pio run -e tab5
 ```
 
-Expected on a v0.4.1 tree:
+Expected on a v0.4.2 tree:
 
 ```
-RAM:   [=         ]   7.2% (used 37016 bytes from 512000 bytes)
-Flash: [===       ]  26.1% (used 819586 bytes from 3145728 bytes)
+RAM:   [=         ]   7.3% (used 37248 bytes from 512000 bytes)
+Flash: [===       ]  26.5% (used 833808 bytes from 3145728 bytes)
 ```
 
 `platformio.ini` pins the important things; do not "clean them up":
@@ -40,12 +40,23 @@ Flash: [===       ]  26.1% (used 819586 bytes from 3145728 bytes)
 | `board_build.psram = enable`, 200 MHz | The frame buffer lives in PSRAM. M5GFX aborts with `M5Tab5 need PSRAM SPEED 200MHz` otherwise |
 | `src/sdkconfig.h` | Overrides the PSRAM speed for the Arduino libraries |
 | `board_build.partitions = app3M_fat9M_16MB.csv` | 3 MB app partition (the CSV ships inside the platform package, not this repo) |
-| `platform_packages` → `launcher_tab5_esp32-arduino-libs-20260519-233957.tar.xz` | Prebuilt Arduino libs for the Tab5's octal PSRAM. This is a **dated GitHub release asset**: if it is ever deleted, the build is not reproducible. If you archive a copy, record its sha256 here |
+| `platform_packages` → `launcher_tab5_esp32-arduino-libs-20260519-233957.tar.xz` | Prebuilt Arduino libs for the Tab5's octal PSRAM. This is a **dated GitHub release asset**: if it is ever deleted, the build is not reproducible. **Archived 2026-10-12** (see the sha256 table below) |
+| `platform_packages` → `esp32-core-3.3.10.zip` | Arduino-ESP32 core 3.3.10 release asset. Also archived (sha256 below) |
 
 If the build dies at the very last step with
 `Brokered host copy overwrite refused by file policy`, the compile and link have
 already succeeded — see §4 for building the merged image by hand from
-`.pio/build/tab5/` (that is how the v0.4.1 release image was produced).
+`.pio/build/tab5/` (that is how the v0.4.2 release image was produced).
+
+### Archived dependency assets (2026-10-12)
+
+Both dated release assets are archived under `~/esp32/vendor/` (30.6 MB + 33 MB).
+If a build ever fails with a 404 on the tarball, restore from there:
+
+| Asset | sha256 |
+|---|---|
+| `esp32-core-3.3.10.zip` | `05cbb2cac185265b8b64f1dfa6982e4ae6d57db67f690a291f119a0b2b6aaab2` |
+| `launcher_tab5_esp32-arduino-libs-20260519-233957.tar.xz` | `6088ab7295e6d976d0609fc64b215f101ceaef90f660b6ae088d5de1e1b23f95` |
 
 ## 3. Flash over USB
 
@@ -87,9 +98,9 @@ PlatformIO 12+ already produces exactly that file:
 
 ```bash
 cp .pio/build/tab5/firmware.factory.bin \
-   releases/pixel-tower-defense-v0.4.1-tab5-merged.bin
-shasum -a 256 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin \
-  > releases/pixel-tower-defense-v0.4.1-tab5-merged.bin.sha256
+   releases/pixel-tower-defense-v0.4.2-tab5-merged.bin
+shasum -a 256 releases/pixel-tower-defense-v0.4.2-tab5-merged.bin \
+  > releases/pixel-tower-defense-v0.4.2-tab5-merged.bin.sha256
 ```
 
 Verify the segments before shipping (this is the check that catches a black screen):
@@ -97,7 +108,7 @@ Verify the segments before shipping (this is the check that catches a black scre
 ```bash
 python3 - <<'PY'
 import struct, pathlib
-b = pathlib.Path('releases/pixel-tower-defense-v0.4.1-tab5-merged.bin').read_bytes()
+b = pathlib.Path('releases/pixel-tower-defense-v0.4.2-tab5-merged.bin').read_bytes()
 def hdr(off):
     return dict(magic=hex(b[off]), nseg=b[off+1], mode=b[off+2],
                 size_freq=hex(b[off+3]), entry=hex(struct.unpack_from('<I', b, off+4)[0]))
@@ -109,20 +120,20 @@ print('app        @0x10000', hdr(0x10000))  # magic 0xe9, mode 2 = DIO
 PY
 ```
 
-Expected output for the v0.4.1 image:
+Expected output for the v0.4.2 image:
 
 ```
-len 929360
+len 944272
 bootloader @0x2000 {'magic': '0xe9', 'nseg': 3, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff29ed0'}
 partitions @0x8000 aa50
 boot_app0  @0xe000 0x1
 app        @0x10000 {'magic': '0xe9', 'nseg': 7, 'mode': 2, 'size_freq': '0x4f', 'entry': '0x4ff00c6a'}
 ```
-sha256 `d018587ba897a69b27e7f44a7918679ef52391eec8fcf3e183dbc50cd077aa81`
+sha256 `b5e701102b23d22321671cb6e642f6231d2e831efe50200591448da94884d5f5`
 
 If you ever need to build it by hand (a project that does not emit `factory.bin`,
-or a build where the post-size step is blocked — v0.4.1 was merged exactly this
-way after the compile+link had already succeeded):
+or a build where the post-size step is blocked — v0.4.1 **and v0.4.2** were merged
+exactly this way after the compile+link had already succeeded):
 
 ```bash
 python3 ~/.platformio/penv/bin/esptool --chip esp32p4 elf2image \
@@ -158,6 +169,7 @@ after changing a number:
 
 ```bash
 python3 tools/gen_font.py     # → src/pixel_font.h   (95 hand-written glyphs)
+python3 tools/gen_cnfont.py   # → src/cn_font.h      (16×16 Chinese, needs Pillow; CN_FONT env overrides the font)
 python3 tools/layout.py       # → src/config_gen.h + preview.png
 python3 tools/gen_sfx.py      # → src/sfx_data.h     (all PCM, synthesised)
 ```
@@ -174,7 +186,7 @@ logic and rendering, not a re-implementation:
 
 ```bash
 g++ -std=c++17 -O2 -I sim/compat -I src sim/run.cpp -o sim/sim && ./sim/sim
-# → 178 passed, 0 failed
+# → 203 passed, 0 failed
 ```
 
 Useful extras:

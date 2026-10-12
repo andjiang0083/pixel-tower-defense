@@ -1,10 +1,10 @@
 # PIXEL TOWER DEFENSE — M5Stack Tab5
 
-**A pixel tower defence written by a local LLM. 20 levels, 5 towers, 8 boss
+**A pixel tower defence written by a local LLM. 20 levels, 5 towers, 9 boss
 abilities — and not a single image or audio file in the firmware: every pixel is
 drawn with `fillRect`, every sound is synthesised from arithmetic.**
 
-**本机大模型写就的像素塔防。20 关、5 种塔、8 种 BOSS 技能 —— 固件里没有一个
+**本机大模型写就的像素塔防。20 关、5 种塔、9 种 BOSS 技能 —— 固件里没有一个
 图片或音频文件：每一颗像素都是 `fillRect` 画的，每一声都是算出来的。**
 
 ---
@@ -17,7 +17,7 @@ drawn with `fillRect`, every sound is synthesised from arithmetic.**
 2. Or with esptool, writing the merged image at 0x0 / 或用 esptool 把合并镜像写到 0x0：
 
 ```bash
-esptool --chip esp32p4 write-flash -z 0x0 pixel-tower-defense-v0.4.1-tab5-merged.bin
+esptool --chip esp32p4 write-flash -z 0x0 pixel-tower-defense-v0.4.2-tab5-merged.bin
 ```
 
 ⚠️ Use the **merged** image (this file's sibling `.bin`), not an app-only
@@ -27,7 +27,7 @@ overwrites the bootloader and the screen stays black.
 只写 app 会盖掉 bootloader，刷完黑屏。
 
 **Device / 设备：** M5Stack Tab5 (ESP32-P4, 1280×720 touch screen)
-**Version / 版本：** v0.4.1 · merged image 929,360 B · sha256 in the `.sha256` file
+**Version / 版本：** v0.4.2 · merged image 944,272 B · sha256 `b5e70110…d5f5` (in the `.sha256` file)
 
 ---
 
@@ -64,9 +64,9 @@ Touch only — this device has no buttons. / 纯触摸，这台设备没有实�
 
 **Watch out for / 小心这些敌人：** ARMOR (flat −6 per bullet hit) · SHIELD (half
 bullet damage) · CHOPPER (flies straight to your base, ignoring your maze) ·
-HEALER (heals the group) · BOSS (8 abilities: heal, brood, death-split, horn, EMP,
-greed, molt, ghost — up to two bosses per level).
-护甲兵 / 护盾兵 / 直升机（无视迷宫直线飞）/ 治疗兵 / BOSS（8 种技能，一关最多两只）。
+HEALER (heals the group) · BOSS (9 abilities: heal, brood, death-split, horn, EMP,
+greed, molt, ghost, siege no-build zone — up to two bosses per level).
+护甲兵 / 护盾兵 / 直升机（无视迷宫直线飞）/ 治疗兵 / BOSS（9 种技能，一关最多两只）。
 
 ---
 

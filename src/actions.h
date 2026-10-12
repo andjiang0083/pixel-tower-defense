@@ -24,6 +24,15 @@ static SelFx g_selFx = {-1, 0};
 static bool g_overDrawn = false;
 static bool g_clearDrawn = false;   // 通关画面同理
 
+// v0.4.2：首次引导 overlay（三步教学；NVS "onboarded" 记住只讲一次）
+static int8_t g_onboardStep = 0;    // 0=关闭；1..3=第几步
+static bool   g_onboarded  = false;
+// 引导对话框几何（render.h drawOnboard 同源，命中判定共用）
+#define ONBOARD_X ((SCREEN_W - 820) / 2)
+#define ONBOARD_Y (SCREEN_H - 130 - 150)
+#define ONBOARD_W 820
+#define ONBOARD_H 130
+
 // ── 重开/初始化后的强制 UI 全量刷新（renderFrame 的缓存归零）────
 static void refreshAllUI(M5GFX* d) {
   resetRenderCaches();          // render.h：建造栏/按钮静态缓存失效
@@ -52,12 +61,51 @@ static bool enterLevel(M5GFX* d, int idx) {
   g_clearDrawn = false;
   closeTowerPanel(d);
   refreshAllUI(d);
+  // v0.4.2：第一次进 L1 弹引导（之后 NVS 记住，老玩家不被教程骚扰）
+  if (!g_onboarded && idx == 0) g_onboardStep = 1;
+  return true;
+}
+
+// ── v0.4.2：进入无尽模式（L10 通关画面入口）──────────────────────
+// ⚠️ g_w.endless 必须在 enterLevel 之后设：levelLoad 会 memset 清零它。
+static bool enterEndless(M5GFX* d) {
+  if (!enterLevel(d, LEVEL_COUNT - 1)) return false;
+  g_w.endless = 1;
+  g_w.gold = START_GOLD;             // 标准经济起手（不搞 Infinite 宽容）
   return true;
 }
 
 // ── 一次点击的全部规则。返回 true = 世界状态发生了变化 ─────────────
 static bool handleTap(M5GFX* d, const Tap& t) {
   if (!t.valid) return false;
+
+  // ── v0.4.2：引导 overlay 打开时，对话框内点击=推进下一步 ────────
+  // （对话框外点击放行给正常操作：step1 就是让玩家真的去点草地）
+  if (g_onboardStep > 0 &&
+      t.x >= ONBOARD_X && t.x < ONBOARD_X + ONBOARD_W &&
+      t.y >= ONBOARD_Y && t.y < ONBOARD_Y + ONBOARD_H) {
+    if (++g_onboardStep > 3) {                 // 第三步点完=出师
+      g_onboardStep = 0;
+      g_onboarded = true;
+      progressSaveNow();                       // onboarded 落盘，永不重弹
+    }
+    return false;
+  }
+
+  // ── v0.4.2：标题界面——语言按钮 / 点击开始 ──────────────────────
+  if (g_w.state == ST_TITLE) {
+    if (t.y >= LANG_BTN_Y && t.y < LANG_BTN_Y + LANG_BTN_H) {
+      if (t.x >= LANG_EN_X && t.x < LANG_EN_X + LANG_BTN_W) {
+        setLang(LANG_EN); drawTitle(d); progressSaveNow(); return false;
+      }
+      if (t.x >= LANG_CN_X && t.x < LANG_CN_X + LANG_BTN_W) {
+        setLang(LANG_CN); drawTitle(d); progressSaveNow(); return false;
+      }
+    }
+    g_w.state = ST_SEL;                        // 任意处 = 开始
+    drawLevelSelect(d);
+    return true;
+  }
 
   // ── 选关界面：静音开关优先（角落小按钮，防误触进错关）──────────
   if (g_w.state == ST_SEL) {
@@ -77,9 +125,15 @@ static bool handleTap(M5GFX* d, const Tap& t) {
     return enterLevel(d, node);
   }
 
-  // ── 通关画面：点任意处 → 下一关（末关回选关）──────────────────
+  // ── 通关画面：点任意处 → 下一关（末关=无尽入口或回选关）────────
   if (g_w.state == ST_CLEAR) {
     progressSaveNow();                       // v0.4.1：确保进度已落盘再跳关
+    // v0.4.2：L10 通关画面的无尽模式入口（引擎早已就绪，只缺这个按钮）
+    if (g_lv + 1 >= LEVEL_COUNT &&
+        t.x >= ENDLESS_BTN_X && t.x < ENDLESS_BTN_X + ENDLESS_BTN_W &&
+        t.y >= ENDLESS_BTN_Y && t.y < ENDLESS_BTN_Y + ENDLESS_BTN_H) {
+      return enterEndless(d);
+    }
     if (g_lv + 1 < LEVEL_COUNT) return enterLevel(d, g_lv + 1);
     g_w.state = ST_SEL;
     drawLevelSelect(d);

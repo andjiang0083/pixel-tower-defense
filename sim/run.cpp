@@ -153,6 +153,76 @@ static int coverageAt(int c, int r) {
   return n;
 }
 
+// ── v0.4.2 分兵升级：每条 route 按"覆盖占比"独立记账，最弱路线优先 ──
+// 旧实现从塔 0 轮询升级——火力天然堆在先建/高分的塔（多半在同一条路），
+// 双路关另一路长期低级放空（L5/L8/L13/L14/L16/L20 全是双路）。
+// ROADMAP 承认"bot 不会分兵所以不是难度标尺"——这就是那句的实现侧修复。
+// 判据（每条路各自算）：该路被塔射程罩住的路格占比。
+static void botUpgradeSplit(void) {
+  for (;;) {
+    // 1) 找覆盖占比最低的 route（双路关的短板）
+    int worstRt = -1; float worstRatio = 1e9f;
+    for (int rt = 0; rt < LV().routes_n; ++rt) {
+      int cov = 0, tot = 0;
+      const int cnt = routeCount(rt);
+      for (int i = 0; i + 1 < cnt; ++i) {
+        const Waypoint& a = routeWP(rt, i); const Waypoint& b = routeWP(rt, i + 1);
+        const int dc = (b.col > a.col) - (b.col < a.col);
+        const int dr = (b.row > a.row) - (b.row < a.row);
+        int cc = a.col, rr = a.row;
+        for (;;) {
+          ++tot;
+          const float px = cc*CELL + CELL/2, py = MAP_TOP + rr*CELL + CELL/2;
+          for (int t = 0; t < MAX_TOWERS; ++t) {
+            const Tower& tw = g_w.towers[t];
+            if (!tw.active) continue;
+            const float rg = TOWER_TYPES[tw.type].range_px
+                           * (1.0f + TOWER_RANGE_SCALE * (tw.level - 1));
+            const float dx = px - (tw.col*CELL+CELL/2), dy = py - (MAP_TOP+tw.row*CELL+CELL/2);
+            if (dx*dx + dy*dy <= rg*rg) { ++cov; break; }
+          }
+          if (cc == b.col && rr == b.row) break;
+          cc += dc; rr += dr;
+        }
+      }
+      const float ratio = tot ? (float)cov / tot : 1.0f;
+      if (ratio < worstRatio) { worstRatio = ratio; worstRt = rt; }
+    }
+    if (worstRt < 0) break;
+    // 2) 最弱路线上，守护它的塔里挑等级最低的升（补短板，不堆长板）
+    int pick = -1; uint8_t pickLv = 0xFF;
+    for (int t = 0; t < MAX_TOWERS; ++t) {
+      const Tower& tw = g_w.towers[t];
+      if (!tw.active) continue;
+      const float rg = TOWER_TYPES[tw.type].range_px
+                     * (1.0f + TOWER_RANGE_SCALE * (tw.level - 1));
+      const float tx = tw.col*CELL+CELL/2, ty = MAP_TOP+tw.row*CELL+CELL/2;
+      bool guards = false;
+      const int cnt = routeCount(worstRt);
+      for (int i = 0; i + 1 < cnt && !guards; ++i) {
+        const Waypoint& a = routeWP(worstRt, i); const Waypoint& b = routeWP(worstRt, i + 1);
+        const int dc = (b.col > a.col) - (b.col < a.col);
+        const int dr = (b.row > a.row) - (b.row < a.row);
+        int cc = a.col, rr = a.row;
+        for (;;) {
+          const float dx = cc*CELL+CELL/2 - tx, dy = MAP_TOP + rr*CELL+CELL/2 - ty;
+          if (dx*dx + dy*dy <= rg*rg) { guards = true; break; }
+          if (cc == b.col && rr == b.row) break;
+          cc += dc; rr += dr;
+        }
+      }
+      if (!guards) continue;
+      if (tw.level < pickLv) { pickLv = tw.level; pick = t; }
+    }
+    if (pick < 0) break;                          // 最弱路也无塔守护 → 没得升
+    const int cu = upgradeCost(g_w.towers[pick]);
+    if (cu <= 0) break;                           // 已满级
+    const bool lastWaves = (g_w.wave >= LV().waves - 1);
+    if (g_w.gold < cu + (lastWaves ? 0 : 80)) break;   // 留余粮（同旧纪律）
+    upgradeTower(pick);
+  }
+}
+
 static void botBuildWave(void) {
   // 1) 覆盖贪心建塔（留 40 应急）
   while (towers() < MAX_TOWERS) {
@@ -194,21 +264,10 @@ static void botBuildWave(void) {
     if (!buildTower(bestC, bestR, type)) break;
   }
   // 2) 升级：v0.3.2 LV3 涨价后"有钱就升"=经济陷阱（两塔满级、全场空虚）。
-  //    纪律：先铺够 6 座防面，且只花"余粮"（留 $120 给下一座塔）。
+  //    纪律：先铺够 6 座防面；v0.4.2 起升级预算按 route 分配（最弱路优先），
+  //    双路关不再"一条路满级、另一路放空"。
   if (towers() >= 5 || g_w.wave >= LV().waves - 1) {
-    bool again = true;
-    while (again) {
-      again = false;
-      for (int i = 0; i < MAX_TOWERS; ++i) {
-        Tower& t = g_w.towers[i];
-        if (!t.active) continue;
-        int cu = upgradeCost(t);
-        bool lastWaves = (g_w.wave >= LV().waves - 1);
-        if (cu > 0 && g_w.gold >= cu + (lastWaves ? 0 : 80)) {
-          upgradeTower(i); again = true;
-        }
-      }
-    }
+    botUpgradeSplit();
   }
 }
 
@@ -265,7 +324,26 @@ static void shotMode(int lv, int waveTarget, const char* out) {
          lv + 1, LV().name, g_w.wave, LV().waves, towers(), alive(), g_w.lives, g_w.gold, out);
 }
 
-int main(void) {
+int main(int argc, char** argv) {
+  // v0.4.2 难度数据化扫描：./sim/sim --x2scan
+  // L14-L20 给 bot 双倍起手金币重跑（不漏怪判据），回答 ROADMAP 第一条：
+  // 这七关是"经济卡死"（×2 就过）还是"输出结构性问题"（×2 也打不过）。
+  if (argc > 1 && strcmp(argv[1], "--x2scan") == 0) {
+    printf("=== x2gold scan: L14-L20 (bot start gold x2, lives=99999) ===\n");
+    for (int lv = 13; lv < LEVEL_COUNT; ++lv) {
+      g_unlocked |= (1u << lv);
+      levelLoad(lv);
+      g_w.gold = START_GOLD * 2;
+      g_w.lives = 99999;                  // 只判经济/输出，不判漏怪
+      const bool win = autoPlayLevel(LV().waves * 60 + 300);
+      printf("L%-2d %-15s %-4s wave=%-2d kills=%-3d goldLeft=%-5d towers=%d\n",
+             lv + 1, LV().name, win ? "PASS" : "FAIL",
+             g_w.wave, g_w.score, g_w.gold, towers());
+    }
+    return 0;
+  }
+
+  printf("=== PC sim v0.4.2: title/language/onboard/endless/SIEGE, real game/render/touch/actions ===\n");
   // 截图模式（文档/商店封面用），不跑断言
   if (const char* s = getenv("SIM_SHOT")) {
     const char* wv = getenv("SIM_SHOT_WAVE");
@@ -275,7 +353,7 @@ int main(void) {
     shotMode(lv, wv ? atoi(wv) : 0, out ? out : "shot.ppm");
     return 0;
   }
-  printf("=== PC sim v0.4.1: 20 levels (L11-20 new maps), real game/render/touch/actions ===\n");
+  printf("=== PC sim v0.4.2: title/language/onboard/endless/SIEGE, real game/render/touch/actions ===\n");
   printf("grid %dx%d cell=%d | caps e/t/b/fx = %d/%d/%d/%d\n",
          COLS, MAP_ROWS, CELL, MAX_ENEMIES, MAX_TOWERS, MAX_BULLETS, MAX_FX);
 
@@ -612,9 +690,13 @@ int main(void) {
     CHECK(eidx>=0,"sfx test: no enemy");
     if (eidx>=0) {
       g_w.enemies[eidx].x=15*CELL+CELL/2; g_w.enemies[eidx].y=MAP_TOP+6*CELL+CELL/2;
-      uint32_t g0=s_simPlay[SFXID_GUN], h0=s_simPlay[SFXID_HIT];
+      // v0.4.2：机枪三音色轮换——断言"三种变体总数"增加（单断言 GUN 会
+      // 因轮换位偶发失败：第一次开火投的是 GUN2）
+      uint32_t g0=s_simPlay[SFXID_GUN]+s_simPlay[SFXID_GUN2]+s_simPlay[SFXID_GUN3];
+      uint32_t h0=s_simPlay[SFXID_HIT];
       tick(15);                           // GAT 420ms → ≥1发；s_nowMs 每tick+33
-      CHECK(s_simPlay[SFXID_GUN] > g0, "no GUN played after firing");
+      CHECK(s_simPlay[SFXID_GUN]+s_simPlay[SFXID_GUN2]+s_simPlay[SFXID_GUN3] > g0,
+            "no GUN played after firing");
       CHECK(s_simPlay[SFXID_HIT] > h0, "no HIT played after bullet impact");
     }
     // 节流：同一毫秒连投 GUN，只应起播一条（间隔未到全丢）
@@ -750,6 +832,155 @@ int main(void) {
   {
     CHECK(waveSize(1)==7 && waveSize(2)==9 && waveSize(3)==10 && waveSize(10)==21,
           "waveSize formula drifted");
+  }
+
+  // ── 19. v0.4.2：标题界面（开机第一屏：语言选择 + 点击开始）────────
+  {
+    g_w.state = ST_TITLE;
+    g_renderOn = true;
+    drawTitle(D); tick(2);                       // 可渲染（星空/标题/按钮全画）
+    setLang(LANG_EN);
+    // 点中文按钮 → 语言切 CN（NVS 由 main 注入，这里只验证状态与重画）
+    tapAt(LANG_CN_X + LANG_BTN_W/2, LANG_BTN_Y + LANG_BTN_H/2);
+    CHECK(langCN(), "CN lang button did not switch language");
+    drawTitle(D); tick(2);                       // 中文标题界面也要能画
+    // 点英文按钮 → 切回 EN
+    tapAt(LANG_EN_X + LANG_BTN_W/2, LANG_BTN_Y + LANG_BTN_H/2);
+    CHECK(!langCN(), "EN lang button did not switch language");
+    // 点开始（屏幕中央空白处）→ 进选关
+    tapAt(SCREEN_W/2, 640);
+    CHECK(g_w.state == ST_SEL, "title tap did not enter level select (state=%d)",
+          (int)g_w.state);
+    setLang(LANG_EN);
+  }
+
+  // ── 20. v0.4.2：首次引导三步（NVS onboarded 记住只讲一次）───────
+  {
+    g_onboarded = false;
+    levelLoad(0); g_w.gold = 999;
+    enterLevel(D, 0);                            // 首次进 L1 → step1
+    CHECK(g_onboardStep == 1, "onboard did not arm on first L1 (step=%d)",
+          (int)g_onboardStep);
+    g_renderOn = true;
+    drawOnboard(D, g_onboardStep); tick(2);      // 三步每一画都要能渲染
+    drawOnboard(D, 2); drawOnboard(D, 3);
+    // 点对话框 → step2 → step3 → 出师（onboarded 落盘）
+    tapAt(ONBOARD_X + ONBOARD_W/2, ONBOARD_Y + ONBOARD_H/2);
+    CHECK(g_onboardStep == 2, "onboard tap did not advance to step2 (%d)",
+          (int)g_onboardStep);
+    tapAt(ONBOARD_X + ONBOARD_W/2, ONBOARD_Y + ONBOARD_H/2);
+    CHECK(g_onboardStep == 3, "onboard tap did not advance to step3 (%d)",
+          (int)g_onboardStep);
+    s_simSaves = 0; g_saveProgress = simCountSave;
+    tapAt(ONBOARD_X + ONBOARD_W/2, ONBOARD_Y + ONBOARD_H/2);
+    CHECK(g_onboardStep == 0 && g_onboarded, "onboard did not complete");
+    CHECK(s_simSaves == 1, "onboarded flag not saved once (saves=%d)", s_simSaves);
+    g_saveProgress = nullptr;
+    // 重进 L1 不再弹引导
+    enterLevel(D, 0);
+    CHECK(g_onboardStep == 0, "onboard re-armed for a veteran");
+  }
+
+  // ── 21. v0.4.2：无尽模式入口（L20 CLEAR → ENDLESS 按钮）──────────
+  // 注意：20 关的终关是 L20（g_lv=19）——v0.4 时代 endless 挂在 L10，
+  // 关卡扩到 20 后入口随终关走（全通才是无尽）。
+  {
+    g_unlocked = 0xFFFFFFFFu; g_cleared = 0xFFFFFFFFu;   // 模拟全通关（enterEndless 走解锁校验）
+    levelLoad(19); g_w.gold = 9999; g_w.lives = 99999;
+    startNextWave(); g_w.wave = LV().waves;
+    g_w.toSpawn = 1; g_w.bossPending = true; tick(30);      // 只出王
+    int bi=-1; for (int i=0;i<MAX_ENEMIES;++i)
+      if (g_w.enemies[i].active && g_w.enemies[i].kind==K_BOSS) bi=i;
+    if (bi>=0) g_w.enemies[bi].hp = 0.01f;                 // 补刀→ST_CLEAR
+    tick(3);
+    g_w.state = ST_CLEAR; g_clearDrawn = false;
+    g_renderOn = true; drawLevelClear(D); tick(2);         // 末关画面含无尽按钮
+    CHECK(g_w.endless == 0, "endless flag set before entering");
+    tapAt(ENDLESS_BTN_X + ENDLESS_BTN_W/2, ENDLESS_BTN_Y + ENDLESS_BTN_H/2);
+    CHECK(g_w.endless == 1, "endless button did not enter endless (endless=%d)",
+          (int)g_w.endless);
+    CHECK(g_w.state == ST_READY && g_w.wave == 0, "endless not at fresh start");
+    CHECK(lvWaves() == ENDLESS_WAVES, "endless waves cap wrong (%d)", lvWaves());
+    // 最高波次记账：wave 超过 endBest 时实时刷新
+    // ⚠️ readyLeftMs 要先复位：levelLoad 的 memset 遗留 0，手工设 wave>0
+    //    会被 readyLeftMs==0 当成"倒计时归零"立刻自动开波（测试环境坑）
+    g_endBest = 5; g_w.wave = 8; g_w.readyLeftMs = 0xFFFFFFFFu; tick(3);
+    CHECK(g_endBest == 8, "endBest not updated live (%d)", (int)g_endBest);
+    g_w.endless = 0; g_endBest = 0;
+  }
+
+  // ── 22. v0.4.2：SIEGE 封锁建造区（L11 GLASS TITAN bit8）──────────
+  {
+    levelLoad(10); g_w.gold = 9999; g_w.lives = 99999;     // L11: SPLIT|HORN|SIEGE
+    startNextWave(); g_w.wave = LV().waves;
+    g_w.toSpawn = 1; g_w.bossPending = true; tick(30);      // 只出王
+    int bi=-1; for (int i=0;i<MAX_ENEMIES;++i)
+      if (g_w.enemies[i].active && g_w.enemies[i].kind==K_BOSS) bi=i;
+    CHECK(bi>=0, "SIEGE test: L11 boss missing");
+    if (bi>=0) {
+      Enemy& B = g_w.enemies[bi];
+      CHECK((bossAbilityOf(B) & AB_SIEGE) != 0, "L11 boss lost SIEGE bit (ab=%u)",
+            (unsigned)bossAbilityOf(B));
+      B.abilityMs = millis();
+      for (int k=0;k<9;++k) B.abNextMs[k] = millis();       // 9 位全逼停
+      tick(SIEGE_MS/33 - 10);                               // ~3.5s 内：SIEGE 已触发且未到期
+      CHECK(g_w.siegeMs > 0, "SIEGE never fired on L11 boss");
+      CHECK(g_w.siegeR == SIEGE_R, "SIEGE radius wrong (%d)", (int)g_w.siegeR);
+      // 圈内建塔被拒（塔心判定）
+      int bc = (int)(g_w.siegeX / CELL), br = (int)((g_w.siegeY - MAP_TOP) / CELL);
+      if (bc >= 0 && bc < COLS && br >= 0 && br < MAP_ROWS
+          && !g_w.path[bc][br] && !g_w.blocked[bc][br]) {
+        CHECK(!buildTower(bc, br, 0), "build inside siege zone was allowed");
+      }
+      // 圈外正常建（找最远的合法格）
+      int fc=-1, fr=-1; float bestD2=-1;
+      for (int c=0;c<COLS;++c) for (int r=0;r<MAP_ROWS;++r) {
+        if (g_w.path[c][r] || g_w.occupied[c][r] || g_w.blocked[c][r]) continue;
+        float dx=c*CELL+CELL/2-g_w.siegeX, dy=MAP_TOP+r*CELL+CELL/2-g_w.siegeY;
+        float d2=dx*dx+dy*dy;
+        if (d2>bestD2) { bestD2=d2; fc=c; fr=r; }
+      }
+      CHECK(fc>=0 && buildTower(fc, fr, 0), "build outside siege zone was refused");
+      // 到期自动解除（在 SIEGE_IV=10s 的下一拍之前）
+      tick((SIEGE_IV - SIEGE_MS)/33 - 8);
+      CHECK(g_w.siegeMs == 0, "siege did not expire (ms=%d)", (int)g_w.siegeMs);
+      if (bc >= 0 && bc < COLS && br >= 0 && br < MAP_ROWS
+          && !g_w.path[bc][br] && !g_w.blocked[bc][br] && !g_w.occupied[bc][br]) {
+        CHECK(buildTower(bc, br, 0), "build after siege expiry still refused");
+      }
+    }
+  }
+
+  // ── 23. v0.4.2：机枪三音色轮换（GUN/GUN2/GUN3 都起播过）─────────
+  {
+    levelLoad(0); g_w.gold = 999; sfxSetMuted(false);
+    buildTower(15,6,0); startNextWave(); tick(20);
+    int eidx=-1; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active){eidx=i;break;}
+    CHECK(eidx>=0,"sfx variant test: no enemy");
+    if (eidx>=0) {
+      g_w.enemies[eidx].x=15*CELL+CELL/2; g_w.enemies[eidx].y=MAP_TOP+6*CELL+CELL/2;
+      g_w.enemies[eidx].maxHp=100000; g_w.enemies[eidx].hp=100000;   // 固定靶多打几轮
+      tick(90);                                     // GAT 420ms×3 → 三轮开火
+      CHECK(s_simPlay[SFXID_GUN]>0 && s_simPlay[SFXID_GUN2]>0 && s_simPlay[SFXID_GUN3]>0,
+            "gun variant rotation incomplete: %d/%d/%d",
+            s_simPlay[SFXID_GUN], s_simPlay[SFXID_GUN2], s_simPlay[SFXID_GUN3]);
+    }
+  }
+
+  // ── 24. v0.4.2：中文渲染路径（px_text 遇 UTF-8 走 cn_font.h）─────
+  {
+    setLang(LANG_CN);
+    g_renderOn = true;
+    levelLoad(0); g_w.gold = 9999; g_w.lives = 20;
+    tick(2); drawHud(D); g_w.hudDirty = false;      // 中文 HUD 全画一遍
+    drawButton(D, true);
+    drawLevelSelect(D); tick(2);                    // 中文选关界面
+    // 宽度函数必须认中文：17px/字，ASCII 6px/字(scale1)
+    // （px_textWidth 语义=总宽减去最后一个字间缝——ASCII 侧原有行为，中文一致）
+    CHECK(px_textWidth("中文", 1) == 33, "CN width wrong (%d)", px_textWidth("中文", 1));
+    CHECK(px_textWidth("AB", 1) == 11, "ASCII width wrong (%d)", px_textWidth("AB", 1));
+    CHECK(px_textWidth("中A", 1) == 22, "mixed width wrong (%d)", px_textWidth("中A", 1));
+    setLang(LANG_EN);
   }
 
   printf("\n=== RESULT: %d passed, %d failed (level-loop checks=%d) ===\n",

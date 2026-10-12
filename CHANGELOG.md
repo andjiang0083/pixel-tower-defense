@@ -4,6 +4,50 @@ Versions are small patch bumps on purpose: features are merged into a tiny
 version number instead of 1.x.0 jumps. Entries describe what a player can feel,
 not internal refactors.
 
+## v0.4.2 — a title screen, Chinese, and the v0.5.0 list done early
+
+Every remaining item from the v0.5.0 suggestion list, folded into a patch bump on
+purpose — the version number is not the feature. New screens, a second language,
+a ninth boss ability, and one data-driven difficulty verdict. Details in
+`docs/FIXLOG-v0.4.2.md`.
+
+Player-visible:
+- **Title screen on boot.** A starfield, a rainbow pixel logo ("PIXEL TOWER
+  DEFENSE" / 像素塔防), the version in gold, and a language button — pick EN or
+  中文 and the game remembers it. The screen is the first thing you see after
+  power-on; tap the logo area to reach the level select.
+- **The whole game speaks Chinese.** Not a translation overlay — every HUD
+  label, button, panel and hint has a real Chinese string. The glyphs are a
+  16×16 bitmap font generated from source (`tools/gen_cnfont.py` renders the
+  actual strings out of `i18n.h` with Pillow), so the zero-asset rule still
+  holds: no font files, just `src/cn_font.h`. Language switches live on the
+  title screen; the choice persists in NVS.
+- **A three-step tutorial on your first level**, then never again: build a
+  tower, the wave button, the upgrade panel. Dismissed per save file.
+- **Endless mode has a door.** Clear L20 and the victory screen offers it; the
+  best wave you ever reach is tracked and shown on the title/HUD.
+- **Towers sound different.** Gunfire rotates through three synthesized
+  variants, so long waves no longer sound like one machine-gun loop.
+- **The ninth boss ability: SIEGE.** The boss plants a no-build zone on the
+  field — flashing red frame, tower construction refused inside — the first
+  ability that constrains *space* instead of numbers. First seen on L11.
+- Difficulty verdict, from data: a full x2-gold rescan of L14–L20 shows those
+  seven levels clear with 3.3k–7.6k gold to spare — they were "hard because
+  you must spend", not "hard because the math is broken". No nerfs shipped.
+
+Under the hood:
+- New `src/i18n.h`: `StrId` enum + parallel EN/CN tables + runtime `TR(id)`;
+  the renderer's ASCII-only assumption replaced by UTF-8 aware pixel drawing.
+- `LevelDef.ability` widened uint8_t → uint16_t for the 9th ability — and the
+  sim caught three real truncation sites (`bossAbilityOf`, `spawnEnemy`,
+  `bossAbilities`) that would have silently disabled SIEGE on hardware.
+- Siege duration and cadence are now separate constants (SIEGE_MS / SIEGE_IV);
+  the first attempt used one number for both and the zone became permanent.
+- The bot splits its upgrades by route coverage instead of round-robin, and
+  the PC simulator gained 25 assertions (178 → **203**), plus an `--x2scan`
+  mode that re-runs late levels with doubled gold to classify difficulty.
+- CI checks the Chinese font generator for drift, like the other generators.
+
 ## v0.4.1 — the fixes you feel only after an hour of play
 
 A full code review of the v0.4.0 tree, with every finding either fixed or
