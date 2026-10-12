@@ -51,13 +51,17 @@ comes back.
 All of these are **real frames from the game's own renderer** (dumped by the PC
 simulator running the firmware sources, not mock-ups):
 
-| Level select | Level 13 SAND COIL |
+| Title screen (v0.4.2) | Level select |
 |---|---|
-| ![level select](docs/screenshots/level-select.png) | ![L13 combat](docs/screenshots/combat-l13-sand-coil.png) |
+| ![title screen](docs/screenshots/title-screen.png) | ![level select](docs/screenshots/level-select.png) |
 
-| Level 12 HAIRPIN RIDGE | All 20 maps (audit render) |
+| Level 13 SAND COIL | Level 12 HAIRPIN RIDGE |
 |---|---|
-| ![L12 combat](docs/screenshots/combat-l12-hairpin-ridge.png) | ![map sheet](docs/screenshots/maps-sheet.png) |
+| ![L13 combat](docs/screenshots/combat-l13-sand-coil.png) | ![L12 combat](docs/screenshots/combat-l12-hairpin-ridge.png) |
+
+| All 20 maps (audit render) | |
+|---|---|
+| ![map sheet](docs/screenshots/maps-sheet.png) | |
 
 ## Install
 

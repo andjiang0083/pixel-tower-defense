@@ -4,7 +4,7 @@
 > 聊天里若另有一版，以本文件为准（两份一漂移，下个会话就不知道听谁的）。
 > 状态块核实于 **2026-10-12 晚间 CST**，**覆盖本文下方及 `HANDOFF.md` 里更早的一切描述**。
 > **v0.4.1 已刷入真机并回读验证**（ESP32-P4 rev 1.3，2026-10-12；固件本体逐字节一致，NVS 旧存档按设计保留）。
-> **v0.4.2 已全部交付并发布到 GitHub**（2026-10-12 晚）：仿真 203 全绿、编译打包（merged 944,272 B / sha256 `b5e70110…d5f5`）、真机刷入（写后哈希校验 + 用户目视确认）、push 完成（`07eb037`+，CI 首跑红已修）。**仅剩 GitHub Release v0.4.2 等用户发话**（纪律：用户明确要求才建）。
+> **v0.4.2 已全部交付并发布到 GitHub**（2026-10-12 晚）：仿真 203 全绿、编译打包（merged 944,272 B / sha256 `b5e70110…d5f5`）、真机刷入（写后哈希校验 + 用户目视确认）、push 完成（`1155597`，CI 全绿）、**GitHub Release v0.4.2 已建**（tag `v0.4.2` → `1155597`，8 资产，远端 bin 下载回读 sha256 与本地一致）。发布链只剩 M5Burner 条目更新（vid `2109325922863968258`，审核中，需用户账号）与两棵本地树的合流。
 > **v0.4.1 / v0.4.2 两轮的档案（问题/修法/经验）在 [`FIXLOG-v0.4.1.md`](FIXLOG-v0.4.1.md) / [`FIXLOG-v0.4.2.md`](FIXLOG-v0.4.2.md)** —— 动手前先读 v0.4.2 那份。
 
 ---
@@ -45,13 +45,14 @@
 | 生成器与源码一致（无脏漂移） | `python3 tools/layout.py; echo GEN_EXIT=$?` | `GEN_EXIT=0`（v0.4.2 新增 SIEGE 三常量 + L11 ability=268） |
 | 中文点阵覆盖 i18n.h 汉字集 | `python3 tools/check_cnfont.py`（纯 stdlib，CI 同款） | 92 字，覆盖精确、几何合法（点阵字节跨平台不可复现——外部字体光栅化，CI 只查覆盖，见 FIXLOG-v0.4.2 P2-4） |
 | L14–L20 难度判据（v0.4.2 数据化） | `./sim/sim --x2scan` | **七关双倍金币全 PASS**（结余 3,296–7,619）= 经济卡死非输出结构性问题；未削弱任何数值；明细 `docs/PLAYTEST.md` |
-| 构建占用（最新源码） | `pio run -e tab5` | 见 README 验证表（v0.4.1 实数：RAM 37,016B / Flash 819,586B；**v0.4.2 未编译，跑完更新**） |
+| 构建占用（最新源码） | `pio run -e tab5` | **v0.4.2 实数：RAM 37,248 B（7.3%）/ Flash 833,808 B（26.5%）**（v0.4.1：37,016/819,586；沙箱拦最后一步 size 检查时用 `~/.platformio/penv/bin/python -m esptool elf2image --flash_mode dio` 补齐 firmware.bin） |
 | 发行镜像结构（Tab5 的 bootloader **在 0x2000，不是 0x0**） | `python3 -c "import pathlib;b=pathlib.Path('releases/pixel-tower-defense-v0.4.1-tab5-merged.bin').read_bytes();print(len(b),b[0x2000:0x2004].hex(),b[0x8000:0x8002].hex(),b[0x10000:0x10004].hex())"` | `929360 | boot e903024f | parts aa50 | app e907024f`（DIO） |
-| 发行件哈希 | `shasum -a 256 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin` | `d018587ba897a69b27e7f44a7918679ef52391eec8fcf3e183dbc50cd077aa81` |
-| 真机刷入+回读（2026-10-12） | `esptool.py --chip esp32p4 --port /dev/cu.usbmodem1101 --baud 460800 write_flash 0x0 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin`，然后 `read_flash 0x0 929360` 回读 | **固件本体（0x0-0x8FFF / 0xE000-0xE2FFF）逐字节一致**，app 段 sha256 两侧同为 `682b739d…`；NVS 区（0x9000-0xDFFF）与镜像的 0xFF 空隙有 62 字节差=**旧存档被保留**（esptool 压缩写入跳过全 FF 块），开机横幅 `v0.4.1 | board=22 | 1280x720`，旧进度 `unlock=0007 cleared=0003` 被正确读入 |
+| 发行件哈希 | `shasum -a 256 releases/pixel-tower-defense-v0.4.2-tab5-merged.bin` | `b5e701102b23d22321671cb6e642f6231d2e831efe50200591448da94884d5f5`（v0.4.1 的是 `d018587b…`） |
+| 真机刷入+回读（2026-10-12） | `esptool.py --chip esp32p4 --port /dev/cu.usbmodem1101 --baud 460800 write_flash 0x0 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin`，然后 `read_flash 0x0 929360` 回读 | **固件本体（0x0-0x8FFF / 0xE000-0xE2FFF）逐字节一致**，app 段 sha256 两侧同为 `682b739d…`；NVS 区（0x9000-0xDFFF）与镜像的 0xFF 空隙有 62 字节差=**旧存档被保留**（esptool 压缩写入跳过全 FF 块），开机横幅 `v0.4.1 | board=22 | 1280x720`，旧进度 `unlock=0007 cleared=0003` 被正确读入。**v0.4.2 刷入（19:10）**：写后 Hash verified + 用户目视确认；完整 read_flash 因 P4 串口瞬断未取得全字节比对（如实记入 FIXLOG §三/§六，勿写成"逐字节一致"） |
 | 全新克隆能构建（唯一算数的"开源可用"承诺） | `git clone … /tmp/x && cd /tmp/x && pio run -e tab5` + `./sim/sim` | 已实测通过（165/0，占用同上） |
 | GitHub 已公开 | `curl -s https://api.github.com/repos/andjiang0083/pixel-tower-defense` | MIT / main / topics 已设 |
-| GitHub Release v0.4.1（8 资产，2026-10-12 发布） | `curl -s https://api.github.com/repos/andjiang0083/pixel-tower-defense/releases/latest` | `draft:false`，含 merged bin（929,360 B，sha256 `d018587b…`，已从 Release 实际下载回读比对一致）/ 封面 / 海报 / LICENSE / CREDITS / THIRD-PARTY-NOTICES |
+| GitHub Release v0.4.1（8 资产，2026-10-12 发布） | `curl -s https://api.github.com/repos/andjiang0083/pixel-tower-defense/releases/tags/v0.4.1` | `draft:false`，含 merged bin（929,360 B，sha256 `d018587b…`，已从 Release 实际下载回读比对一致）/ 封面 / 海报 / LICENSE / CREDITS / THIRD-PARTY-NOTICES |
+| **GitHub Release v0.4.2**（8 资产，2026-10-12 19:37 发布，id `410542219`） | `curl -s https://api.github.com/repos/andjiang0083/pixel-tower-defense/releases/tags/v0.4.2` | `draft:false`，tag `v0.4.2` → `1155597`；merged bin（944,272 B，sha256 `b5e70110…`，**已从 Release 实际下载回读比对一致**）/ 新封面（mkposter，数值条 9 技能）/ 新海报 / LICENSE / CREDITS / THIRD-PARTY-NOTICES / README_M5Burner |
 | M5Burner 已提交 | 登录态 `fetch('/api/v1/users/me/firmwares?pageSize=100')`（返回字段是 **`rows`**） | `PIXEL TOWER DEFENSE` · Tab5 · Games · **status=PENDING** · `fid=2109325922859773953` · `vid=2109325922863968258` |
 
 ### 3. 不许改的东西（这几条是用户拍板的设计约束，改之前必须先问）
@@ -65,11 +66,11 @@
 
 ### 4. 待办（按风险排：低风险在前，动构建/必须真机验证的单独列出）
 
-0. **【发布·大部分完成】v0.4.2 已编译打包、已刷真机、已 push**（2026-10-12 晚：merged 944,272 B / sha256 `b5e70110…d5f5`；刷入后 esptool 写后哈希校验 + 用户目视确认标题界面，完整回读因 P4 串口瞬断未取得；push `260d414..07eb037`，CI 首跑因 cn_font 字节漂移红——已改语义覆盖检查 `tools/check_cnfont.py` 并复推）。剩余：① **GitHub Release v0.4.2 等用户明确发话**（沿用 v0.4.1 纪律）；② 合回开发树 → `sync-public.sh` 单向同步；③ M5Burner 更新条目（vid `2109325922863968258`，审核中，仍指向 v0.4.0）。细节见 `docs/FIXLOG-v0.4.2.md` §三/§六。
+0. **【发布·v0.4.2 已完成】编译打包、刷真机、push、GitHub Release 全部完成**（2026-10-12 晚：merged 944,272 B / sha256 `b5e70110…d5f5`，四段头与 v0.4.0 一致；刷入后 esptool 写后哈希校验 + 用户目视确认标题界面，完整回读因 P4 串口瞬断未取得；push `260d414..07eb037`+`1155597`（CI 首跑因 cn_font 字节漂移红——已改语义覆盖检查 `tools/check_cnfont.py` 并复推，9 步骤全绿）；tag `v0.4.2` → `1155597` + Release id `410542219`，8 资产，远端 bin 下载回读 sha256 与本地一致）。剩余：① 合回开发树 → `sync-public.sh` 单向同步（两树还停在 v0.4.0）；② M5Burner 更新条目（vid `2109325922863968258`，审核中，仍指向 v0.4.0）。细节见 `docs/FIXLOG-v0.4.2.md` §三/§六。
 1. ~~【零风险·文档/数据】x2gold 扫描~~（**v0.4.2 已完成**：L14–L20 全 PASS = 经济卡死，明细 `docs/PLAYTEST.md`）。
 2. ~~无尽模式入口 UI~~（**v0.4.2 已完成**：L20 通关画面进无尽 + NVS 最高波次 + 仿真断言；引擎早 ready）。
 3. **【中风险·要真机】**真人试玩回收：请用户（或小学生）拿真机跑 L11–L20，记录"第几波崩、崩在哪条路"；顺带回收 v0.4.2 新界面（引导三步是否讲清、中文 HUD 可读性）。判据：能给出至少一关的真实失败波次与原因；据此调 `layout.py` 的经济/血量（改完 `GEN_EXIT=0` → 仿真 → 刷机）。**硬件现在就在线**。
-4. **【中风险·要真机+相机】**README 首图换成 **Tab5 真机实拍**（`docs/screenshots/` 现在全是仿真渲染图）。硬件在场即可拍；v0.4.2 的标题界面也值得拍一张。
+4. **【中风险·要真机+相机】**README 首图换成 **Tab5 真机实拍**（`docs/screenshots/` 现有仿真渲染图 + v0.4.2 标题界面仿真帧 `title-screen.png`；真机实拍仍缺）。硬件在场即可拍。
 5. **【等外部】**M5Burner 审核结果：过审后卡片状态变 `PUBLISHED`，回写 `publish.yaml` 的 `readback:` 与 `store-copy.json`。判据：`release.py --strict` 通过 + 回读接口里状态不再是 PENDING。
 6. **【可选·需要用户拍板】**是否把"本机模型写就"的过程细节（写成哪部分、提示词、返工率）单独写一篇博客/帖子——对外的话术要避开把模型名写进产品名（阿里商标风险）。
 
@@ -85,15 +86,17 @@
 
 ### 附录 A：30 秒体检（新会话开工第一件事）
 
-> v0.4.2 的改动在公开仓克隆的工作树里：`/Users/jiangweizhong/WorkBuddy/QQwbb/pixel-tower-defense`
-> （`git status` 有 M/?? 即 v0.4.2 未提交的改动）。跑下面命令前先确认自己在这个目录。
+> 项目就在公开仓克隆里：`/Users/jiangweizhong/WorkBuddy/QQwbb/pixel-tower-defense`
+> （v0.4.2 已全部提交推送并发布；工作树出现 M/?? 就是新改动）。跑命令前先确认在这个目录。
 
 ```bash
 cd /Users/jiangweizhong/WorkBuddy/QQwbb/pixel-tower-defense
 python3 tools/layout.py; echo "GEN_EXIT=$?"          # 期望 0
 g++ -std=c++17 -O2 -I sim/compat -I src sim/run.cpp -o sim/sim && ./sim/sim | tail -1   # 期望 203 passed, 0 failed
 ./sim/sim --x2scan | grep -c PASS                     # 期望 7（L14-L20 双倍金币）
-shasum -a 256 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin   # 仍是 v0.4.1 的 d018587b…（v0.4.2 merged 尚未产出）
+python3 tools/check_cnfont.py                         # 期望 exit 0（中文字库覆盖 i18n.h 汉字集）
+shasum -a 256 releases/pixel-tower-defense-v0.4.2-tab5-merged.bin   # 期望 b5e70110…（=Release 远端回读值）
+git log --oneline -1 && git ls-remote origin -h refs/heads/main | cut -c1-7   # 两者应相同
 ```
 
 ### 附录 B：已被否决的方案（别再提，括号里是机制）
@@ -104,4 +107,4 @@ shasum -a 256 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin   # 仍是 v0.
 - **把模型名写进产品名/商店标题**：商标风险，署名只放 `CREDITS.md` 与商店描述正文。
 - **M5Burner 只传 app-only 的 `firmware.bin`**：平台永远写 `0x0`，会盖掉 bootloader → 黑屏。必须传 merged（`firmware.factory.bin` 改名成 `-merged.bin`）。
 - **release 建好后再移动 tag 来"修正"指向**：删 tag 会让 release **异步**变 draft（API 当场读回还是已发布，几分钟后变 draft，`/releases/tags/<t>` 直接 404 → 对全世界不可见）。**根治：先 push 完最后一个提交，再建 release**；不得已动了 tag，就要 `PATCH {"draft": false}` 并在 +5s/+20s/+45s 三个时点、`/releases/<id>` 与 `/releases/tags/<t>` 两个口径都复读。
-- **"仿真里顺手截图"**：长跑模式关着渲染，跑完导出的帧缓冲是**关卡开局那一帧**（空棋盘）。要图必须走 `SIM_SHOT=<lv> SIM_SHOT_WAVE=<w> SIM_SHOT_OUT=<path>` 的真渲染模式（内含 `lives>=15` 守门，避免拍到"已经输了"的帧）。
+- **"仿真里顺手截图"**：长跑模式关着渲染，跑完导出的帧缓冲是**关卡开局那一帧**（空棋盘）。要图必须走 `SIM_SHOT=<lv> SIM_SHOT_WAVE=<w> SIM_SHOT_OUT=<path>` 的真渲染模式（内含 `lives>=15` 守门，避免拍到"已经输了"的帧）；标题界面用 `SIM_SHOT=title`（v0.4.2 新增，商店封面/README 标题截图即此模式产出）。

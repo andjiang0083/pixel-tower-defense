@@ -192,7 +192,7 @@ def build(frame_path, S, out_path, label):
         by += 34 * S
 
     # 数值条（与版本无关的固定卖点）
-    st = txt("20 LEVELS - 5 TOWERS - 8 BOSS SKILLS", S, AMBER_DIM, glyphs)
+    st = txt("20 LEVELS - 5 TOWERS - 9 BOSS SKILLS", S, AMBER_DIM, glyphs)
     img.paste(st, (x0, 606 * S), st)
 
     # 分隔竖线

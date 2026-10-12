@@ -105,6 +105,21 @@ uint8_t 截断真 bug + 1 个持续/节拍混淆设计缺陷。
   负面测试（删字形/换字形）现在都有回归。
 - **回归**：`python3 tools/check_cnfont.py` 三场景（正/删/换）实测通过；CI 复跑见 §三。
 
+### P2-5　仿真漏了 ST_TITLE 分支：世界在标题界面背后继续跑 ✅已修
+
+- **现象**：为 v0.4.2 商店封面抓标题界面帧（新增 `SIM_SHOT=title`）时，第一张截图里
+  混着上一局的 HUD（NEXT WAVE、建造栏、升级面板）。
+- **根因**：`sim/run.cpp` 的 `tick()` 镜像了真机 loop 的 ST_SEL 静态分支，却漏了 v0.4.2
+  新增的 ST_TITLE 分支——真机 `main.cpp` 在标题界面 `delay(20); return;`，仿真却继续
+  `gameUpdate` + `renderFrame`。**仿真是真机的镜子，镜子漏了一个分支**。
+- **修法**：① `tick()` 加 `if (g_w.state == ST_TITLE) continue;`（与 ST_SEL 同款）；
+  ② `renderFrame()` 开头防御性早退（真机 loop 已经挡着，这里是双保险，防别的调用路径）。
+- **顺带**：`SIM_SHOT=title` 截图模式入库（商店封面/README 截图从此可一键重出）；
+  `mkposter.py` 数值条 8→9 BOSS SKILLS；封面/海报用新帧重生成。
+- **影响面说明**：`render.h` 的早退在真机路径上是死代码（loop 永不进 renderFrame），
+  故 v0.4.2 tag 的 merged bin **不重打**——行为逐字节等价；此改动随 tag 后的提交入库。
+- **回归**：仿真仍 203 passed, 0 failed；标题帧实测干净（README 首图即该帧）。
+
 ## 三、验证（全部真实执行过）
 
 | 检查 | 结果 |
@@ -120,7 +135,10 @@ uint8_t 截断真 bug + 1 个持续/节拍混淆设计缺陷。
 | 合并镜像 | `releases/pixel-tower-defense-v0.4.2-tab5-merged.bin`，944,272 B，sha256 `b5e70110…d5f5`；四段头与 v0.4.0/v0.4.1 布局逐字节一致（boot e903024f/mode2 / parts aa50 / boot_app0 0x01 / app e907024f，DIO） |
 | **真机刷入**（2026-10-12 19:10，ESP32-P4，`/dev/cu.usbmodem1101`） | `write_flash 0x0 merged.bin` 成功（3.8s，esptool 写后 **Hash of data verified**）；用户已在屏幕上目视确认（开机标题界面）。完整 `read_flash` 回读因 P4 USB-JTAG 串口瞬断（"Serial data stream stopped"，460800/115200 多次重试均失败，v0.4.1 时同现象重试即好）未取得全字节比对——刷入本身有 esptool 哈希校验 + 目视确认双重证据 |
 | **git push**（2026-10-12 19:12） | `260d414..07eb037 main -> main`，远端 SHA 与本地一致；token 走临时 credential.helper，未落盘 |
-| **CI**（push 后自动触发） | 首跑**红**：唯一失败项 = cn_font 字节级漂移（跨平台字体渲染不可复现，见 P2-4）→ 已改语义覆盖检查并复推，复跑结果见文末注记 |
+| **CI**（push 后自动触发） | 首跑**红**：唯一失败项 = cn_font 字节级漂移（跨平台字体渲染不可复现，见 P2-4）→ 已改语义覆盖检查并复推（`1155597`，9 步骤全 success：sim 203 + 三生成器漂移 + cn_font 覆盖） |
+| **tag v0.4.2**（2026-10-12 19:36） | annotated tag 指向 `1155597`（=Release target），已推送 |
+| **GitHub Release v0.4.2**（2026-10-12 19:37，用户授权"你来收尾"） | id `410542219`，8 资产（封面/海报/merged bin/sha256/README_M5Burner/CREDITS/LICENSE/THIRD-PARTY-NOTICES）；**下载回读验证通过**：远端 bin 944,272 B，sha256 与本地 `.sha256` 逐字节一致 |
+| 封面/海报重生成 | `SIM_SHOT=title` 抓标题帧（P2-5 修复后干净）→ 存 `docs/screenshots/title-screen.png`（README 双语首图）；战场帧 L13 w9 走 mkposter 出新海报（数值条 9 技能）；商店封面沿用 mkposter 结构（信息密度高于裸标题帧） |
 
 ## 四、经验（下次别再交学费）
 
@@ -157,10 +175,10 @@ v0.4.2 已实现"启动界面+双语+引导+无尽入口+SIEGE+音色+bot 分兵
 【树的位置】
 - 本目录 = 公开仓克隆（github.com/andjiang0083/pixel-tower-defense），v0.4.2 已全部完成：
   仿真 203 全绿、已编译打包（merged 944,272 B / sha256 b5e70110…d5f5）、已刷真机
-  （写后哈希校验 + 用户目视确认；完整回读因 P4 串口瞬断未取得）、已 push
-  （07eb037 及后续文档提交，CI 首跑红已修，复推后见绿）。
+  （写后哈希校验 + 用户目视确认；完整回读因 P4 串口瞬断未取得）、已 push、已建
+  GitHub Release v0.4.2（tag v0.4.2 → 1155597，8 资产，远端下载回读 sha256 一致）。
 - 作者开发树 ~/esp32/tab5-tower-defense、发布镜像树 ~/esp32/pixel-tower-defense-public
-  （只准 tools/sync-public.sh 单向同步）。
+  （只准 tools/sync-public.sh 单向同步；两树都还停在 v0.4.0，合流是后续事项）。
 
 【已验证事实（2026-10-12，复跑命令在 docs/HANDOFF-PROMPT.md）】
 - sim：203 passed / 0 failed（v0.4.1 是 178；新增 §19-§24 全在 sim/run.cpp）
@@ -178,6 +196,8 @@ P1：SIEGE 持续/节拍拆成 SIEGE_MS=3500 / SIEGE_IV=10000（曾共用 4000 �
     siegeMs 递减移到 gameUpdate 状态门控之前。
 P2：layout ability 断言 <256→<512 + uint16；gen_cnfont 多平台字体+venv；3 处
     "定义在使用后"编译错误；测试自身 3 个坑（L20 不是 L10、宽度语义、readyLeftMs）。
+P2：CI 字库字节漂移立不住（P2-4，改语义覆盖）；仿真漏 ST_TITLE 分支（P2-5，标题帧
+    截图时抓到的真缺陷——镜子漏了真机 loop 的一个分支）。
 P3：x2gold 扫描结论入 PLAYTEST.md。
 
 【规矩（沿用，别重犯）】
@@ -197,8 +217,11 @@ P3：x2gold 扫描结论入 PLAYTEST.md。
    --flash_mode dio 补齐 firmware.bin，再 merge-bin）。
 2. ~~真机刷入~~（已完成 19:10；验收点已过：开机第一屏是标题界面）。
 3. ~~commit + push~~（已完成 19:12；token 已由用户更新过一次，若再失效需重新提供）。
-4. 用户明确要求后才建 GitHub Release v0.4.2（沿用 v0.4.1 纪律；merged+sha256 就绪）。
-5. 后续建议：真人试玩回收 L11-L20 失败波次；README 首图换真机实拍；无尽模式深度调平衡。
+4. ~~GitHub Release v0.4.2~~（已完成 19:37：用户说"你来收尾"即授权；tag v0.4.2 指向
+   1155597，8 资产，远端 bin 回读 sha256 与本地一致）。
+5. 后续建议：①开发树/发布镜像树合流到 v0.4.2（两树还停在 v0.4.0，用 sync-public.sh
+   单向同步）；②M5Burner 条目更新（vid 2109325922863968258，审核中，需用户账号）；
+   ③真人试玩回收 L11-L20 失败波次 + 中文 HUD 真机可读性；④无尽模式深度调平衡。
 ```
 
 ## 六、遗留事项（需要你拍板/外部条件）
@@ -209,10 +232,13 @@ P3：x2gold 扫描结论入 PLAYTEST.md。
    重试即好，本轮未复现成功——工具/环境问题，非固件问题）。
    **~~未 push~~（已完成 19:12）**：已推到 GitHub（`260d414..07eb037`，远端 SHA 一致；
    token 走临时 credential.helper 未落盘）。CI 首跑红（cn_font 字节漂移，见 P2-4），
-   已改语义覆盖检查（`tools/check_cnfont.py`）后复推。
+   已改语义覆盖检查（`tools/check_cnfont.py`）后复推（`1155597`，全绿）。
+   **~~未建 Release~~（已完成 19:37，用户授权"你来收尾"）**：tag `v0.4.2` + Release
+   id `410542219`，8 资产，远端 bin 下载回读 sha256 与本地一致（见 §三）。
 2. **~~push 需要新 token~~（已解决）**：用户 19:10 提供新 token，推送已完成。
-3. **GitHub Release v0.4.2**：按 v0.4.1 纪律，等用户明确发话再建（merged bin 与 sha256
-   已就绪：944,272 B / `b5e70110…d5f5`）。
+3. **tag 后的尾单 commit（P2-5）**：仿真 ST_TITLE 分支修复 + `SIM_SHOT=title` + 封面/海报
+   重生成 + README 标题截图，在 tag `v0.4.2` 之后提交推送。**v0.4.2 bin 未重打**——
+   `renderFrame` 早退在真机是死代码路径（loop 已挡），行为逐字节等价。
 4. **M5Burner 条目**（vid `2109325922863968258`）仍在审核，更新需要用户账号操作。
 5. **真人试玩回收**：L11–L20 第几波崩、引导三步是否讲清了玩法、中文 HUD 在真机上的
    可读性（16×16 点阵的笔画密度）——硬件在线（`/dev/cu.usbmodem1101`，v0.4.2 已刷入）。

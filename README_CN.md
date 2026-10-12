@@ -58,13 +58,17 @@
 
 下面全是**游戏自己渲染出的真实画面**（PC 仿真跑固件源码导出，不是示意图）：
 
-| 选关界面 | 第 13 关 SAND COIL |
+| 标题界面（v0.4.2 新增） | 选关界面 |
 |---|---|
-| ![选关](docs/screenshots/level-select.png) | ![交火](docs/screenshots/combat-l13-sand-coil.png) |
+| ![标题界面](docs/screenshots/title-screen.png) | ![选关](docs/screenshots/level-select.png) |
 
-| 第 12 关 HAIRPIN RIDGE | 20 张地图总览（审计渲染） |
+| 第 13 关 SAND COIL | 第 12 关 HAIRPIN RIDGE |
 |---|---|
-| ![交火](docs/screenshots/combat-l12-hairpin-ridge.png) | ![地图总览](docs/screenshots/maps-sheet.png) |
+| ![交火](docs/screenshots/combat-l13-sand-coil.png) | ![交火](docs/screenshots/combat-l12-hairpin-ridge.png) |
+
+| 20 张地图总览（审计渲染） | |
+|---|---|
+| ![地图总览](docs/screenshots/maps-sheet.png) | |
 
 ## 安装
 

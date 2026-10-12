@@ -50,6 +50,11 @@ Under the hood:
   for *coverage* (every character in the string table has a glyph) — pixel
   bitmaps are rasterised from a system font and cannot be byte-identical
   across machines, so the semantic invariant is what CI enforces.
+- The simulator mirrors the device's `ST_TITLE` static branch (it used to keep
+  simulating and rendering the world behind the title screen), gained a
+  `SIM_SHOT=title` capture mode, and `renderFrame` defends against the state.
+  Cover art regenerated: title screenshot in the READMEs, 9 boss skills on
+  the poster stat bar.
 
 ## v0.4.1 — the fixes you feel only after an hour of play
 

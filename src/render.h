@@ -658,6 +658,10 @@ static void closeTowerPanel(M5GFX* g) {
 
 // ── 每帧渲染主体：擦脏格 → 塔 → 敌人 → 子弹 → 特效 ──────────────
 static void renderFrame(M5GFX* g) {
+  // v0.4.2：标题界面是静态屏（真机 loop 在 ST_TITLE 直接 return，永不进来）。
+  // 这里是防御性早退：万一别的路径调到 renderFrame，也不会把世界/HUD
+  // 画到标题界面上（仿真曾因此把上一局 HUD 混进标题帧截图）。
+  if (g_w.state == ST_TITLE) return;
   eraseDirty(g);
 
   for (int i = 0; i < MAX_TOWERS; ++i) if (g_w.towers[i].active) drawTower(g, g_w.towers[i]);

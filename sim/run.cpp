@@ -56,9 +56,11 @@ static void tick(int frames) {
     g_simMs += 33;
     Tap t = readTap();                 // 真 touch.h：只有抬指那一帧 valid
     if (t.valid) handleTap(D, t);
-    // v0.4.1：镜像 main.cpp 选关分支——只推进输入/反馈，不跑世界也不渲染
-    // （旧仿真在 ST_SEL 也跑 renderFrame，会把 HUD 画到选关屏幕上，与真机不符）
+    // v0.4.2：镜像 main.cpp 的两个静态界面分支——只推进输入/反馈，
+    // 不跑世界也不渲染（ST_TITLE 下若走 renderFrame，会把上一局 HUD
+    // 画到标题界面上，与真机不符；标题帧截图就靠这条保持干净）
     if (g_w.state == ST_SEL) { updateSelFx(D); continue; }
+    if (g_w.state == ST_TITLE) continue;
     gameUpdate(33);                    // 真逻辑（面板打开=内部暂停）
     s_nowMs = g_simMs;                // v0.3.1：镜像 loop()——音效节流时钟
     sfxPump();                        // 仿真下排空队列（同份投递/节流代码）
@@ -302,9 +304,20 @@ static bool autoPlayLevel(int maxSimSeconds) {
   printf("  (timeout in autoPlay)\n"); return false;
 }
 
-// ── 截图模式：SIM_SHOT=<1..20> [SIM_SHOT_WAVE=<w>] [SIM_SHOT_OUT=<path>] ──
-// 真渲染 + bot 自动打到指定波次，抓"有塔有兵"的战场帧（README/商店封面用）。
-// 关掉长跑的 g_renderOn=false 逻辑：这里每帧都真画，所以帧缓冲就是当下画面。
+// ── 截图模式 ─────────────────────────────────────────────────────
+// SIM_SHOT=title                       → 抓开机标题界面（v0.4.2 起商店封面用）
+// SIM_SHOT=<1..20> [SIM_SHOT_WAVE=<w>] → 真渲染 + bot 自动打到指定波次，
+//   抓"有塔有兵"的战场帧（README/商店封面用）。关掉长跑的 g_renderOn=false
+//   逻辑：这里每帧都真画，所以帧缓冲就是当下画面。
+static void titleShotMode(const char* out) {
+  g_w.state = ST_TITLE;               // 标题界面 = 开机第一屏（main.cpp setup 同款）
+  g_renderOn = true;
+  drawTitle(D);                       // setup 里就是直接画一次
+  tick(2);                            // 让帧缓冲对齐当前时刻
+  dumpPpm(out);
+  printf("shot: title screen v0.4.2 -> %s\n", out);
+}
+
 static void shotMode(int lv, int waveTarget, const char* out) {
   levelLoad(lv);
   const int wt = waveTarget > 0 ? waveTarget : LV().waves;   // 0 = 打到最后波
@@ -348,8 +361,12 @@ int main(int argc, char** argv) {
   if (const char* s = getenv("SIM_SHOT")) {
     const char* wv = getenv("SIM_SHOT_WAVE");
     const char* out = getenv("SIM_SHOT_OUT");
+    if (strcmp(s, "title") == 0) {         // v0.4.2：标题界面帧
+      titleShotMode(out ? out : "shot_title.ppm");
+      return 0;
+    }
     int lv = atoi(s) - 1;
-    if (lv < 0 || lv >= LEVEL_COUNT) { printf("SIM_SHOT out of range (1..%d)\n", LEVEL_COUNT); return 2; }
+    if (lv < 0 || lv >= LEVEL_COUNT) { printf("SIM_SHOT out of range (1..%d or \"title\")\n", LEVEL_COUNT); return 2; }
     shotMode(lv, wv ? atoi(wv) : 0, out ? out : "shot.ppm");
     return 0;
   }
