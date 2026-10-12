@@ -57,7 +57,16 @@ simulator running the firmware sources, not mock-ups):
 **Easiest — M5Burner.** Search for *PIXEL TOWER DEFENSE* in
 [M5Burner](https://burner.m5stack.com) (or the desktop app) and flash it. M5Burner
 writes one merged image at offset 0x0, which is what the `*-merged.bin` release asset
-is built for — see [BUILDING.md](BUILDING.md).
+is built for — see [BUILDING.md](BUILDING.md). (The store entry is still v0.4.0
+while it waits for review; for the newest build use the GitHub release.)
+
+**GitHub Releases** — grab `pixel-tower-defense-vX.Y.Z-tab5-merged.bin` from the
+[latest release](https://github.com/andjiang0083/pixel-tower-defense/releases/latest)
+and flash it at offset 0x0 with esptool:
+
+```bash
+esptool --chip esp32p4 write-flash -z 0x0 pixel-tower-defense-vX.Y.Z-tab5-merged.bin
+```
 
 **From source.** Short version:
 

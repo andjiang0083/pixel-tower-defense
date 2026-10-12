@@ -194,8 +194,9 @@ P3：压暗 4×4 步进；px_char RLE 合并；CI workflow（sim+三生成器漂
 - 不用串口调试；真机验收靠开机横幅自报版本行。
 
 【建议的下一步（按风险排）】
-1. 把本目录 v0.4.1 的改动合回开发树 → sync-public.sh 同步公开树 → push →
-   建 GitHub Release v0.4.1（merged bin + sha256 + 封面）→ M5Burner 更新条目。
+1. ~~把本目录 v0.4.1 的改动合回开发树 → sync-public.sh 同步公开树 → push →
+   建 GitHub Release v0.4.1~~（push 与 Release 均已完成，2026-10-12）。
+   剩余：合回开发树走 sync-public.sh 单向同步；M5Burner 更新条目（vid 2109325922863968258）。
 2. 无尽模式入口 UI（引擎早 ready，缺"L10 CLEAR 后进无尽"的入口+状态）。
    注意 FIXLOG P2-1：HUD 的 GOLD/WAVE 框已按无尽位数配好，直接接即可。
 4. 真人试玩回收 L11-L20 的失败波次（bot 不是难度标尺）。
@@ -204,9 +205,11 @@ P3：压暗 4×4 步进；px_char RLE 合并；CI workflow（sim+三生成器漂
 
 ## 六、遗留事项（需要你拍板/外部条件）
 
-1. **未 push、未建 release**：v0.4.1 的 merged bin 与 sha256 已在本地
-   `releases/` 备好（文件名已改为 v0.4.1），但 GitHub Release / M5Burner 更新
-   需要你的凭证与账号操作——按 HANDOFF-PROMPT.md 的纪律走。
+1. **~~未 push、未建 release~~（已完成 2026-10-12）**：v0.4.1 已 push 到 GitHub
+   （`26439e4`，CI 实跑 completed/success），已建 **GitHub Release v0.4.1**
+   （tag 指向 `26439e4`，8 资产；merged bin 从 Release 下载回读、sha256 与本地
+   逐字节一致）。剩余：合回开发树走 `sync-public.sh` 单向同步；M5Burner 条目
+   更新（vid `2109325922863968258`，审核中）需要你的账号操作。
 2. **bmorcelli libs 资产指纹**：`platform_packages` 里那个带日期的 tarball
    （`launcher_tab5_esp32-arduino-libs-20260519-233957.tar.xz`）建议下载一份
    存档并把 sha256 记进 BUILDING.md——GitHub release 资产被删则构建不可复现。

@@ -65,6 +65,14 @@
 **最省事：M5Burner。** 在 [M5Burner](https://burner.m5stack.com) 或桌面版里搜
 *PIXEL TOWER DEFENSE* 刷入。网页版与桌面版都把整个镜像写到 0x0 偏移，这正是
 Release 里 `*-merged.bin` 的用途 —— 详见 [BUILDING_CN.md](BUILDING_CN.md)。
+（商店条目审核中、还是 v0.4.0；要刷最新版请走下面的 GitHub Releases。）
+
+**GitHub Releases** —— 从[最新 release](https://github.com/andjiang0083/pixel-tower-defense/releases/latest)
+下载 `pixel-tower-defense-vX.Y.Z-tab5-merged.bin`，用 esptool 写到 0x0：
+
+```bash
+esptool --chip esp32p4 write-flash -z 0x0 pixel-tower-defense-vX.Y.Z-tab5-merged.bin
+```
 
 **从源码：**
 

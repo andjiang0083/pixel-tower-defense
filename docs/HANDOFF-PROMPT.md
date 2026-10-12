@@ -47,7 +47,7 @@
 | 真机刷入+回读（2026-10-12） | `esptool.py --chip esp32p4 --port /dev/cu.usbmodem1101 --baud 460800 write_flash 0x0 releases/pixel-tower-defense-v0.4.1-tab5-merged.bin`，然后 `read_flash 0x0 929360` 回读 | **固件本体（0x0-0x8FFF / 0xE000-0xE2FFF）逐字节一致**，app 段 sha256 两侧同为 `682b739d…`；NVS 区（0x9000-0xDFFF）与镜像的 0xFF 空隙有 62 字节差=**旧存档被保留**（esptool 压缩写入跳过全 FF 块），开机横幅 `v0.4.1 | board=22 | 1280x720`，旧进度 `unlock=0007 cleared=0003` 被正确读入 |
 | 全新克隆能构建（唯一算数的"开源可用"承诺） | `git clone … /tmp/x && cd /tmp/x && pio run -e tab5` + `./sim/sim` | 已实测通过（165/0，占用同上） |
 | GitHub 已公开 | `curl -s https://api.github.com/repos/andjiang0083/pixel-tower-defense` | MIT / main / topics 已设 |
-| GitHub Release v0.4.0（8 资产） | `curl -s https://api.github.com/repos/andjiang0083/pixel-tower-defense/releases/latest` | `draft:false`，含 merged bin / sha256 / 封面 / 海报 / LICENSE / CREDITS / THIRD-PARTY-NOTICES |
+| GitHub Release v0.4.1（8 资产，2026-10-12 发布） | `curl -s https://api.github.com/repos/andjiang0083/pixel-tower-defense/releases/latest` | `draft:false`，含 merged bin（929,360 B，sha256 `d018587b…`，已从 Release 实际下载回读比对一致）/ 封面 / 海报 / LICENSE / CREDITS / THIRD-PARTY-NOTICES |
 | M5Burner 已提交 | 登录态 `fetch('/api/v1/users/me/firmwares?pageSize=100')`（返回字段是 **`rows`**） | `PIXEL TOWER DEFENSE` · Tab5 · Games · **status=PENDING** · `fid=2109325922859773953` · `vid=2109325922863968258` |
 
 ### 3. 不许改的东西（这几条是用户拍板的设计约束，改之前必须先问）
@@ -61,7 +61,7 @@
 
 ### 4. 待办（按风险排：低风险在前，动构建/必须真机验证的单独列出）
 
-0. **【发布·需凭证】v0.4.1 待发布**：修复已在公开仓克隆里完成并本地 commit，**已刷入真机验证**（2026-10-12，ESP32-P4 rev 1.3，回读固件本体逐字节一致，详见 §2 表）。剩余：合回开发树 → `sync-public.sh` → push → 建 GitHub Release v0.4.1（merged bin/sha256/封面/海报）→ M5Burner 更新条目（vid `2109325922863968258`）。细节与遗留事项见 `docs/FIXLOG-v0.4.1.md` §六。
+0. **【发布·大部分完成】v0.4.1 已 push + 已建 GitHub Release**（2026-10-12，tag `v0.4.1` 指向 `26439e4`，8 资产，下载回读 sha256 一致；CI 实跑通过）。剩余：① 合回开发树 → `sync-public.sh` 同步（纪律要求公开树只准单向同步）；② M5Burner 更新条目（vid `2109325922863968258`，审核中，当前指向 v0.4.0）。细节见 `docs/FIXLOG-v0.4.1.md` §六。
 1. **【零风险·文档/数据】**给 L14–L20 补"每关差多少"的表：给 bot 起始金币 ×2 重跑，判定这七关是**经济卡死**还是**输出结构性问题**。判据：`SIM_SHOT=<lv>` 那类逐关诊断输出里的 `gold/alive/lives` 三列趋势（现在已经知道 L18 会在 wave 5 打到 lives=0、L20 在 wave 6、L8 也没过）。产出写进 `ROADMAP.md`。
 2. **【低风险·只在仿真里】**无尽模式的**入口 UI**：引擎参数与无尽难度曲线已就绪，缺的只是"通关 L10 之后进入"的那一个入口与状态。判据：仿真里能自动进入无尽并按波次记账（加一条断言，`./sim/sim` 仍 178/0）。注意 v0.4.1 已把 HUD 的 GOLD/WAVE 擦除框按无尽位数（7 位/`250/250`）配好，直接接即可。
 3. **【中风险·要真机】**真人试玩回收：请用户（或小学生）拿真机跑 L11–L20，记录"第几波崩、崩在哪条路"。判据：能给出至少一关的真实失败波次与原因；据此调 `layout.py` 的经济/血量（改完 `GEN_EXIT=0` → 仿真 → 刷机）。**硬件现在就在线**（`/dev/cu.usbmodem1101`，v0.4.1 已刷入，旧存档 `unlock=0007 cleared=0003` 保留）。
