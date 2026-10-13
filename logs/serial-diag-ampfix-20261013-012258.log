@@ -1,0 +1,7 @@
+=== PIXEL TOWER DEFENSE v0.4.3 | board=22 | 1280x720 ===
+[   697][E][Preferences.cpp:47] begin(): nvs_open failed: NOT_FOUND
+unlock=0001 cleared=0000 levels=20 lang=EN endbest=0
+tap language = switch EN/中文 | tap = start
+[DIAG] PI4IOE dir=63 out=76 in=08 | ES8388 dacpwr=3C fmt=18 mute=20 vol=21
+[DIAG] after fix: PI4IOE dir=61 out=76
+[DIAG] tone playing ~1.5s — 请听自检音
