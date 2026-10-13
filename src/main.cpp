@@ -62,6 +62,24 @@ static void saveProgress(void) {
 // ── 帧率控制：30fps 足够，显著降低 PSRAM 填充压力 ──────────────────
 static const uint32_t FRAME_MS = 33;
 
+// ── Tab5 音频硬件初始化（功放使能修复）────────────────────────────
+// 根因（v0.4.3 一直无声）：M5Unified 的 _speaker_enabled_cb_tab5 只做
+//   In_I2C.bitOn(0x43, 0x05, 0b10)（置功放使能输出位），但从不写方向
+//   寄存器 0x03 → PI4IOE 该脚默认"输入"，输出位写了也驱动不了功放 →
+//   完全静音（codec / I2S / MCLK 全正常，playRaw 也成功）。
+// 修复：先把 PI4IOE 方向设为输出+推挽并拉高（独立最小测试程序已验证出声），
+// 再 M5.Speaker.begin()（其内部仍会重配 ES8388 + 置 bit1，无冲突）。
+static void audioInit(void) {
+#if defined (ARDUINO_M5STACK_TAB5)
+  M5.In_I2C.writeRegister8(0x43, 0x03, 0xFF, 400000);  // IODIR: 全输出
+  M5.In_I2C.writeRegister8(0x43, 0x05, 0xFF, 400000);  // OUT:   全高（功放使能）
+  M5.In_I2C.writeRegister8(0x43, 0x07, 0x00, 400000);  // 推挽
+  M5.In_I2C.writeRegister8(0x43, 0x0B, 0x00, 400000);
+#endif
+  M5.Speaker.begin();
+  M5.Speaker.setVolume(200);   // 游戏音量（非测试满音量，避免刺耳）
+}
+
 // ============================================================================
 // SETUP
 // ============================================================================
@@ -112,6 +130,9 @@ void setup(void) {
                 g_unlocked, g_cleared, LEVEL_COUNT,
                 langCN() ? "CN" : "EN", (int)g_endBest);
   Serial.println("tap language = switch EN/中文 | tap = start");
+
+  // ── 音频初始化（Tab5 功放使能修复，见 audioInit 注释）──────────
+  audioInit();
 
   delay(1200);                            // 让开局界面可见
 }

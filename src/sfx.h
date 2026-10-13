@@ -64,8 +64,6 @@ static void sfxPost(uint8_t id) {
 // ⚠️ playRaw 在 begin() 前调用会失败但不崩；begin 由首次 pump 惰性执行。
 static void sfxPump(void) {
 #ifdef ARDUINO_M5STACK_TAB5
-  static bool begun = false;
-  if (!begun) { M5.Speaker.begin(); M5.Speaker.setVolume(200); begun = true; }
   int budget = 3;                           // 每帧最多起播3条：混音器也怕齐射尖峰
   while (budget-- > 0 && s_qTail != s_qHead) {
     uint8_t id = s_q[s_qTail];
