@@ -4,6 +4,21 @@ Versions are small patch bumps on purpose: features are merged into a tiny
 version number instead of 1.x.0 jumps. Entries describe what a player can feel,
 not internal refactors.
 
+## v0.4.4 — the sound is back
+
+**Every gun, cannon and explosion now actually makes a noise.** This one was
+a big one: since v0.4.0 the game has been completely silent on hardware —
+including the build published to M5Burner. The cause was in the audio codec's
+setup: the DAC output was never routed to the output mixer, so every sound
+was computed perfectly and then quietly died on its way to the speaker. We
+rewrote the codec init from Espressif's official driver sequence, and audio
+is verified working on hardware — including after a full cold boot (unplug,
+wait five seconds, power up).
+
+The investigation is documented in `docs/AUDIO-HANDOFF.md`; the fix lives in
+`src/sfx.h`. Thanks to the WorkBuddy testers whose issue report (#1) started
+the hunt.
+
 ## v0.4.3 — the UI audit: text that overlapped, and glyphs that were missing
 
 v0.4.2 shipped a lot of new UI, so this release is a pass over every screen
