@@ -157,10 +157,26 @@ class GfxFb : public Gfx {
 #if PTD_FB_BPP == 24
     // 颜色 → 3 字节。只在这里展开一次（每次 fillRect 一次），不是每像素
     // 一次：这正是 24bpp 相对 16bpp 的额外代价，且已被下面的批量搬运摊薄。
+    //
+    // ⚠️⚠️ 内存字节序 = **B,G,R**（不是 R,G,B）⚠️⚠️
+    //   这是 IDF RGB888 帧缓冲 / LVGL RGB888 的通用布局，本板厂商同款。
+    //   v0.5.1 之前这里写的是 R,G,B ⇒ 红蓝**整通道互换**：激光塔的红、
+    //   敌人的红全部显示成蓝色 —— 真机症状就是用户报的"感觉没有红色"。
+    //   证据在参考实现里（retro-go-tab5 的 mipi_dsi_claw4.h）：
+    //     #define CLAW4_RGB888_BGR 1
+    //     d[0] = b8; d[1] = g8; d[2] = r8;
+    //   改字节序只需改这一处（下面 drawPixel 那一份同理），别去动颜色表。
+    //
+    // 展开用**位复制**（r5<<3 | r5>>2）而不是 *255/31：
+    //   后者在 RISC-V 上是**软除法**（P4 无硬件除法器），几十周期一次；
+    //   前者两次移位。视觉上两者最大差 7/255，肉眼不可辨。
+    const uint8_t r5 = (uint8_t)((c >> 11) & 0x1F);
+    const uint8_t g6 = (uint8_t)((c >> 5)  & 0x3F);
+    const uint8_t b5 = (uint8_t)( c        & 0x1F);
     const uint8_t pix[3] = {
-      (uint8_t)((uint32_t)((c >> 11) & 0x1F) * 255u / 31u),   // R
-      (uint8_t)((uint32_t)((c >> 5)  & 0x3F) * 255u / 63u),   // G
-      (uint8_t)((uint32_t)( c        & 0x1F) * 255u / 31u),   // B
+      (uint8_t)((b5 << 3) | (b5 >> 2)),   // B
+      (uint8_t)((g6 << 2) | (g6 >> 4)),   // G
+      (uint8_t)((r5 << 3) | (r5 >> 2)),   // R
     };
 #else
     const uint8_t pix[2] = { (uint8_t)(c & 0xFF), (uint8_t)(c >> 8) };
@@ -210,9 +226,15 @@ class GfxFb : public Gfx {
     uint8_t* p = (uint8_t*)fb_
                + ((size_t)y * w + (size_t)x) * PTD_FB_PX_BYTES;
 #if PTD_FB_BPP == 24
-    p[0] = (uint8_t)((uint32_t)((c >> 11) & 0x1F) * 255u / 31u);
-    p[1] = (uint8_t)((uint32_t)((c >> 5)  & 0x3F) * 255u / 63u);
-    p[2] = (uint8_t)((uint32_t)( c        & 0x1F) * 255u / 31u);
+    // 与 fillRect 同一份字节序（B,G,R）与同一套位复制展开。
+    // ⚠️ 两处必须保持一致：分成两份迟早会漂移，而"红蓝只在其中一处互换"
+    // 比全屏错色更难排查（参考实现的注释也是这么写的）。
+    const uint8_t r5 = (uint8_t)((c >> 11) & 0x1F);
+    const uint8_t g6 = (uint8_t)((c >> 5)  & 0x3F);
+    const uint8_t b5 = (uint8_t)( c        & 0x1F);
+    p[0] = (uint8_t)((b5 << 3) | (b5 >> 2));
+    p[1] = (uint8_t)((g6 << 2) | (g6 >> 4));
+    p[2] = (uint8_t)((r5 << 3) | (r5 >> 2));
 #else
     p[0] = (uint8_t)(c & 0xFF); p[1] = (uint8_t)(c >> 8);
 #endif

@@ -64,6 +64,20 @@ jobs:
           [ "$failed" -le 7 ] || { echo "claw4 failures grew: $failed > 7"; exit 1; }
           echo "claw4 baseline OK: $total passed, $failed failed"
 
+      # ── 24bpp 渲染内核（Claw4 真机走的那条路）──────────────────────
+      # ⚠️ 为什么必须单独一个编译单元：
+      #   PTD_FB_BPP 是编译期常量，而 sim/run.cpp 整个按 16bpp 编（PPM 截图
+      #   按 RGB565 解）⇒ **24bpp 那条路在 CI 里从未被执行过**。
+      #   v0.5.1 的"红色全部显示成蓝色"因此一路绿到真机才被发现：
+      #   RGB888 帧缓冲的内存字节序是 B,G,R，我在 gfx_fb.h 里写成了 R,G,B。
+      #   这个 bug 的隐蔽性在于——单元测试也是我自己写的，期望值同样按错的
+      #   序写的，所以"自证循环"，谁都拦不住。
+      # 本条把字节序钉死成**可机判**的门禁：谁再改回 R,G,B，这里立刻红。
+      - name: 24bpp render core — B,G,R byte order (Claw4 real path)
+        run: |
+          g++ -std=c++17 -O2 -DPTD_FB_BPP=24 -I build/claw4 -I src sim/gfx_24bpp_test.cpp -o sim/gfx_24bpp_test
+          ./sim/gfx_24bpp_test
+
       # ── 单一真源纪律：改生成器必须重新生成，且生成结果必须入库 ──────
       # v0.5.0：路径从 src/config_gen.h 改为 build/<profile>/config_gen.h
       - name: config_gen.h must match tools/layout.py (tab5)
