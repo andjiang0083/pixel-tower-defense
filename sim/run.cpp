@@ -28,6 +28,11 @@ static void simCountSave(void) { ++s_simSaves; }
 
 static Gfx* D = &M5.Display;
 
+// 帧缓冲的 16bpp 视图。v0.5.1 起 Gfx::fb() 返回 void*（像素宽度由
+// PTD_FB_BPP 决定，接口层不再假设是 16 位）；PC 侧固定 16bpp，
+// 直接在取指针的地方把格式说清楚，比让每个调用点各写一次强转好。
+static inline uint16_t* FB16(void) { return (uint16_t*)D->fb(); }
+
 // ── PPM 导出（真彩，直接吐帧缓冲；由 tools/to_png.py 转 PNG）────
 static void dumpPpm(const char* path) {
   FILE* f = fopen(path, "wb"); if (!f) return;
@@ -35,7 +40,7 @@ static void dumpPpm(const char* path) {
   uint8_t row[SCREEN_W * 3];
   for (int y = 0; y < SCREEN_H; ++y) {
     for (int x = 0; x < SCREEN_W; ++x) {
-      uint16_t c = D->fb()[y * SCREEN_W + x];
+      uint16_t c = FB16()[y * SCREEN_W + x];
       row[x*3+0] = (uint8_t)(((c >> 11) & 0x1F) << 3);
       row[x*3+1] = (uint8_t)(((c >> 5) & 0x3F) << 2);
       row[x*3+2] = (uint8_t)((c & 0x1F) << 3);
@@ -900,7 +905,7 @@ int main(int argc, char** argv) {
     int black=0;
     for (int x=BTN_X; x<BTN_X+24; ++x)
       for (int y=BTN_Y; y<BTN_Y+BTN_H; ++y)
-        if (D->fb()[y*SCREEN_W+x]==C_UI_BG && x<BAR_X) ++black;  // 按钮左缘被刷黑
+        if (FB16()[y*SCREEN_W+x]==C_UI_BG && x<BAR_X) ++black;  // 按钮左缘被刷黑
     CHECK(black==0, "HUD WAVE plate overlaps NEXT WAVE button: %d px", black);
     // 底板右缘必须留在按钮之前
     //v0.5.0：956→WNUM_X-4（旧值把 tab5 的 1280 宽坐标写死在断言里，
@@ -914,7 +919,7 @@ int main(int argc, char** argv) {
     int tagLost=0;
     // v0.5.0：800..860 → WLBL_X 起 60px（旧值同样写死 1280 基准）
     for (int i=0;i<60;++i)
-      if (D->fb()[HUD_Y*(int)SCREEN_W + (int)WLBL_X + i] == C_TEXT_DIM) ++tagLost;
+      if (FB16()[HUD_Y*(int)SCREEN_W + (int)WLBL_X + i] == C_TEXT_DIM) ++tagLost;
     CHECK(tagLost>10, "HUD WAVE label erased by range-box cleanup: %d px", tagLost);
   }
 
@@ -933,7 +938,7 @@ int main(int argc, char** argv) {
     int residue=0;
     // 扫旧框四条边（避开面板/按钮区域：只扫地图带内）
     auto isBtnHi=[&](int x,int y){ if(y<MAP_TOP||y>=BUILD_BAR_Y) return false;
-      uint16_t c=D->fb()[y*SCREEN_W+x]; return c==C_BTN_HI; };
+      uint16_t c=FB16()[y*SCREEN_W+x]; return c==C_BTN_HI; };
     for (int x=tcx-rr+3;x<tcx+rr-3;++x){ if(isBtnHi(x,tcy-rr))++residue; if(isBtnHi(x,tcy+rr))++residue; }
     for (int y=tcy-rr+3;y<tcy+rr-3;++y){ if(isBtnHi(tcx-rr,y))++residue; if(isBtnHi(tcx+rr,y))++residue; }
     CHECK(residue==0, "range box residue after close: %d px", residue);
@@ -1187,14 +1192,14 @@ int main(int argc, char** argv) {
     g_unlocked = 0x0001; g_cleared = 0;                     // 只解锁 L1
     g_w.state = ST_SEL; drawLevelSelect(D);
     const int cx = selNodeX(2) + SEL_NODE_W/2, cy = selNodeY(0) + SEL_NODE_H/2;  // 节点正中心=两红叉对角线交点
-    const uint16_t before = D->fb()[cy * SCREEN_W + cx];
+    const uint16_t before = FB16()[cy * SCREEN_W + cx];
     tapAt(cx, cy);                                          // 点锁定节点
     CHECK(g_selFx.lifeFrames > 0, "locked tap did not arm selFx");
     updateSelFx(D);                                         // 画一帧红叉
-    CHECK(D->fb()[cy * SCREEN_W + cx] == C_BAD, "locked feedback not red");
+    CHECK(FB16()[cy * SCREEN_W + cx] == C_BAD, "locked feedback not red");
     for (int i = 0; i < 25; ++i) updateSelFx(D);            // 20 帧到期自擦
     CHECK(g_selFx.lifeFrames == 0, "selFx did not expire");
-    CHECK(D->fb()[cy * SCREEN_W + cx] == before, "node not restored after selFx");
+    CHECK(FB16()[cy * SCREEN_W + cx] == before, "node not restored after selFx");
   }
 
   // ── 18. v0.4.1：波量公式唯一化（waveSize 与旧硬编码逐点一致）─────

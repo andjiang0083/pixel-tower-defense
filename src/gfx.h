@@ -53,5 +53,8 @@ class Gfx {
   virtual void setRotation(int r) { (void)r; }
 
   // 帧缓冲首地址：双缓冲 / PSRAM 场景下 BSP 要把它交给显示控制器。
-  virtual uint16_t* fb() = 0;
+  // v0.5.1：返回类型从 uint16_t* 改成 void*。
+  //   帧缓冲的像素格式现在是 PTD_FB_BPP 决定的（16 或 24），接口层
+  //   不该假装它一定是 16 位。知道格式的那一侧自己去解释指针。
+  virtual void* fb() = 0;
 };
