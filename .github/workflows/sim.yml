@@ -1,7 +1,11 @@
 name: sim
 
-# 门禁：PC 仿真（编译真固件源码）+ 生成物的漂移检查 + 中文字库的语义覆盖检查。
+# 门禁：PC 仿真（编译真固件源码）+ 生成物的漂移检查。
 # 仿真是本项目唯一的自动化测试（真机不便接入 CI），任何 PR 不得让它变红。
+#
+# v0.5.1：删掉 cn_font 的语义覆盖检查——v0.5.0 起移除中文支持，
+#   src/cn_font.h 与 tools/gen_cnfont.py / check_cnfont.py / cn_glyph_rule.py
+#   一并删除（见 i18n.h 头注）。留着就是在查一个不存在的文件的覆盖率。
 #
 # v0.5.0（Claw4 移植）：仿真从 1 个 profile 扩到 2 个。
 #   · tab5  = 1280x720（M5Stack Tab5，原生目标）——门禁状态与 v0.4.x 完全一致
@@ -31,17 +35,23 @@ jobs:
           g++ -std=c++17 -O2 -DPTD_FAKE_TOUCH -I build/tab5 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_tab5
           ./sim/sim_tab5
 
-      # ── claw4 仿真（锁定基线：当前 268 passed / 23 failed）──────────
-      # ⚠️ v0.5.0 基线变更说明（重要，不要误读成"变差了"）：
-      #   断言总数 291→291，但**失败数 15→23**。这不是回归，原因是
-      #   v0.5.0 把 HUD/建造栏/面板的几何全部改成"按屏宽比例 + 锚定"，
-      #   之前因几何错误而**提前失败退出**的断言现在能真正跑到，暴露出
-      #   下一层的溢出问题。净效果：可执行检查的覆盖面扩大了。
-      #   已实际修好的：建造栏提示出屏 6 项、HUD 波次板压按钮 3 项、
-      #   中文文案在窄容器溢出 25 项（改为窄屏自动降级英文）。
-      #   剩余 23 项全是"容器尺寸 vs 文案宽度"，真机画面出来后再逐项调。
-      # 断言总数只增不减，失败数基线 23。
-      - name: PC simulator [claw4] — baseline lock (268 passed / 23 failed)
+      # ── claw4 仿真（锁定基线：当前 213 passed / 8 failed）───────────
+      # ⚠️ v0.5.1 基线变更说明：
+      #   · 断言总数 291 → 221（-70）：删掉中英双语循环（只有英文一种语言），
+      #     以及随语言按钮/中文字库一起下线的那些断言。
+      #   · 失败数 16 → 8，且**UI 类断言 16 项全部转绿**（0 failed）。
+      #     修法见 render.h / tools/layout.py 的 v0.5.1 注释：把"按屏宽等比
+      #     缩放"换成"按实际占位链式推导"，并把容器（选关网格/浮层面板/
+      #     无尽按钮）补上进屏断言。
+      #   · 剩下 8 项**全是玩法/关卡设计，不是 GUI**：
+      #       L1 路径只有 18 格（18 列地图的路径长度不达标）
+      #       L4 IRON CORRIDOR bot 打不过（claw4 关卡重画后的数值待调）
+      #       激光/溅射/盾牌定量测试的建塔列号写死 15/20/25，18 列地图
+      #         上 20 和 25 直接出界 → findTowerAt 返回 -1 → 后续
+      #         g_w.towers[-1] 是越界访问
+      #     这三项都属于"18 列关卡设计"这条独立工作线，不在本次 GUI/性能
+      #     改动范围内。基线锁在 8，一旦玩法侧开工把它压下去就上调本注释。
+      - name: PC simulator [claw4] — baseline lock (213 passed / 8 failed)
         run: |
           g++ -std=c++17 -O2 -DPTD_FAKE_TOUCH -I build/claw4 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_claw4
           out=$(./sim/sim_claw4)
@@ -49,9 +59,9 @@ jobs:
           total=$(echo "$out" | grep -oP 'RESULT: \K[0-9]+' || echo 0)
           failed=$(echo "$out" | grep -oP 'RESULT: [0-9]+ passed, \K[0-9]+' || echo 0)
           # 断言总数基线（新增断言时手动上调，并说明原因）
-          [ "$total" -ge 291 ] || { echo "assert count dropped: $total < 291"; exit 1; }
+          [ "$total" -ge 221 ] || { echo "assert count dropped: $total < 221"; exit 1; }
           # 失败数基线：只允许不增
-          [ "$failed" -le 23 ] || { echo "claw4 failures grew: $failed > 23"; exit 1; }
+          [ "$failed" -le 8 ] || { echo "claw4 failures grew: $failed > 8"; exit 1; }
           echo "claw4 baseline OK: $total passed, $failed failed"
 
       # ── 单一真源纪律：改生成器必须重新生成，且生成结果必须入库 ──────
@@ -71,15 +81,3 @@ jobs:
         run: |
           python3 tools/gen_sfx.py
           git diff --exit-code src/sfx_data.h
-
-      # v0.4.2：中文字库。为什么不是字节级漂移：点阵由 Pillow+FreeType 光栅化外部
-      # 字体得到，字体/FreeType/Pillow 任一不同（换平台、换字体、升级依赖）都会
-      # 得到不同的字节——实测同一台机器上 STHeiti 与 Hiragino 渲染结果即不同，
-      # v0.4.2 首次推送时 CI 就是这样红的。所以这里查跨平台恒成立的语义不变量。
-      # v0.4.3 收紧：要求"STR_CN 表内每个非 ASCII 字符都有字形"——旧规则只认
-      # U+4E00..9FFF，全角标点（"：" "！"）因此同时躲过生成器与检查器。
-      # 收字规则现在是 tools/cn_glyph_rule.py 单一真源，生成器与检查器共用。
-      # 字节一致性是维护机纪律：改 i18n.h 中文 → 用同一字体重跑 gen_cnfont.py
-      # → git diff 必须为空（本检查纯 stdlib，无需 Pillow）。
-      - name: cn_font.h must cover every non-ASCII char in i18n.h
-        run: python3 tools/check_cnfont.py

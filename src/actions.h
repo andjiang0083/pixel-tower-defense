@@ -28,10 +28,11 @@ static bool g_clearDrawn = false;   // 通关画面同理
 static int8_t g_onboardStep = 0;    // 0=关闭；1..3=第几步
 static bool   g_onboarded  = false;
 // 引导对话框几何（render.h drawOnboard 同源，命中判定共用）
-#define ONBOARD_X ((SCREEN_W - 820) / 2)
-#define ONBOARD_Y (SCREEN_H - 130 - 150)
-#define ONBOARD_W 820
-#define ONBOARD_H 130
+// v0.5.1：宽度随屏宽收缩（config_gen.h 的 ONBOARD_W），不再写死 820。
+//   720 屏上 820 宽的框左右各出屏 50px（(720-820)/2 = -50），
+//   玩家点最外侧那部分根本不在框内 → 教程推不动。
+#define ONBOARD_X ((SCREEN_W - ONBOARD_W) / 2)
+#define ONBOARD_Y (SCREEN_H - ONBOARD_H - 150)
 
 // ── 重开/初始化后的强制 UI 全量刷新（renderFrame 的缓存归零）────
 static void refreshAllUI(Gfx* d) {
@@ -108,17 +109,11 @@ static bool handleTap(Gfx* d, const Tap& t) {
     return false;
   }
 
-  // ── v0.4.2：标题界面——语言按钮 / 点击开始 ──────────────────────
+  // ── v0.4.2：标题界面——点击任意处开始 ────────────────────────
+  // v0.5.1：语言按钮随中文支持一起删掉了（v0.5.0 起只有英文一种语言），
+  //   命中分支与 drawTitle 里的按钮是同一份几何，删一处即可，不留孤儿。
   if (g_w.state == ST_TITLE) {
-    if (t.y >= LANG_BTN_Y && t.y < LANG_BTN_Y + LANG_BTN_H) {
-      if (t.x >= LANG_EN_X && t.x < LANG_EN_X + LANG_BTN_W) {
-        setLang(LANG_EN); drawTitle(d); progressSaveNow(); return false;
-      }
-      if (t.x >= LANG_CN_X && t.x < LANG_CN_X + LANG_BTN_W) {
-        setLang(LANG_CN); drawTitle(d); progressSaveNow(); return false;
-      }
-    }
-    g_w.state = ST_SEL;                        // 任意处 = 开始
+    g_w.state = ST_SEL;
     drawLevelSelect(d);
     return true;
   }

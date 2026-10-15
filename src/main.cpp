@@ -44,7 +44,7 @@ static Preferences s_prefs;
 // v0.4.3：引导 overlay 的重画去重（见 loop 里的说明）
 static int8_t s_lastOnboardStep = 0;
 
-// 进度落盘：把解锁/通关/星级/语言/引导/无尽记录写进 NVS
+// 进度落盘：把解锁/通关/星级/引导/无尽记录写进 NVS
 // （v0.4.1：去重逻辑在 progress.h，由仿真断言"通关画面只写一次"）
 static void saveProgress(void) {
   s_prefs.begin("td", false);
@@ -53,7 +53,6 @@ static void saveProgress(void) {
   s_prefs.putUInt("stars",  packStars(0));
   s_prefs.putUInt("stars2", packStars(10));
   s_prefs.putUChar("mute", s_muted ? 1 : 0);   // v0.3.1：静音偏好
-  s_prefs.putUChar("lang", (uint8_t)g_lang);   // v0.4.2：界面语言
   s_prefs.putUChar("onboarded", g_onboarded ? 1 : 0);  // v0.4.2：引导只讲一次
   s_prefs.putUShort("endbest", (uint16_t)g_endBest);   // v0.4.2：无尽最高波次
   s_prefs.end();
@@ -97,7 +96,6 @@ void setup(void) {
   uint32_t packed = s_prefs.getUInt("stars", 0);               // v0.3.0：旧档无此键=0
   uint32_t packed2 = s_prefs.getUInt("stars2", 0);             // v0.4：L11-20
   sfxSetMuted(s_prefs.getUChar("mute", 0) != 0);              // v0.3.1
-  setLang(s_prefs.getUChar("lang", LANG_EN));                 // v0.4.2：界面语言（默认英文）
   g_onboarded = s_prefs.getUChar("onboarded", 0) != 0;        // v0.4.2：引导只讲一次
   g_endBest   = (int16_t)s_prefs.getUShort("endbest", 0);     // v0.4.2：无尽最高波次
   s_prefs.end();
@@ -109,9 +107,8 @@ void setup(void) {
   g_w.state = ST_TITLE;               // v0.4.2：开机先进标题界面
   drawTitle(&M5.Display);
 
-  Serial.printf("unlock=%04X cleared=%04X levels=%d lang=%s endbest=%d\n",
-                g_unlocked, g_cleared, LEVEL_COUNT,
-                langCN() ? "CN" : "EN", (int)g_endBest);
+  Serial.printf("unlock=%04X cleared=%04X levels=%d endbest=%d\n",
+                g_unlocked, g_cleared, LEVEL_COUNT, (int)g_endBest);
   Serial.println("tap language = switch EN/中文 | tap = start");
 
 

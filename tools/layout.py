@@ -41,6 +41,19 @@ PROFILES = {
         hud_rows=2, build_bar_rows=2,
         ui=1.00,
         design_range=150,
+        # ── 横向 UI 绝对尺寸（px）。为什么是绝对值而不是比例：──
+        #   这些容器里装的是**字**，字宽只由 scale（1/2/3...）决定，
+        #   不随屏宽连续变化。容器宽度必须 ≥ 最长文案的字宽 + 内边距，
+        #   所以它是"内容驱动"的下界，不是"屏宽驱动"的比例。
+        #   720 宽的屏因此不能把它们等比缩小——缩了字就溢出容器。
+        btn_w=200,          # "NEXT WAVE"@scale2 = 108px；+内边距 20 → 128 起
+        panel_w=360,        # 塔面板：标题行(14+108+20+54+14=210) 与属性行(210+60+14=284)
+        # 选关节点网格（20 关）
+        sel_cols=5, sel_rows=4, sel_node_w=170, sel_node_h=110,
+        sel_gap_x=35, sel_gap_y=26, sel_y0=108,
+        # 浮层面板（居中；会自动夹到屏宽内，见 OVER_W 的 min）
+        over_w=760,         # GAME OVER / LEVEL CLEAR 面板宽
+        onboard_w=820,      # 首次引导对话框宽
         desc="M5Stack Tab5 横屏 1280x720（原生目标）",
     ),
     "claw4": dict(
@@ -53,6 +66,22 @@ PROFILES = {
         # 相对变强 1.78 倍、难度崩塌。缩放系数 sqrt(18/32)≈0.75，
         # 具体最终值要靠 map_design.py 审计 + 模拟器自动通关反推。
         design_range=112,
+        # ── 横向 UI 绝对尺寸 ──
+        # 按钮：仍按内容定宽（"NEXT WAVE" 108 + 内边距 20 = 128），
+        #   取 132 留一点余量。它占 720 的 18.3%（tab5 只占 15.6%），
+        #   因为 720 上没有更多空间可以再让了——HUD 左段（12..326）+
+        #   BEST(56) + WAVE(96) + 按钮(132) + 边距 = 恰好塞满 720。
+        btn_w=132,
+        # 塔面板：360 是内容下界（属性行要 284），720 的 41.7% 装得下。
+        #   不能按 tab5 的 28.125% 缩到 202 —— 那样属性行必然溢出面板。
+        panel_w=300,
+        # 选关：tab5 的 5×170+4×35 = 990 在 720 上左右各出屏 135。
+        #   改 4 列 × 5 行 + 收窄节点：4×148+3×22 = 658 < 720（左右各留 31）。
+        #   纵向 5×100+4×18 = 572，y0=80 → 80..652，底部提示在 666，屏高 720 ✓。
+        sel_cols=4, sel_rows=5, sel_node_w=148, sel_node_h=100,
+        sel_gap_x=22, sel_gap_y=18, sel_y0=80,
+        # 浮层：会被 min(..., SCREEN_W-40) 夹到 680（720 上）。
+        over_w=760, onboard_w=820,
         desc="nologotech Metalio Claw4 方形 720x720",
     ),
 }
@@ -81,6 +110,9 @@ def apply_profile():
     """把 profile 的几何写入模块级网格常量。由 use_profile() 调用。"""
     global SCREEN_W, SCREEN_H, CELL, COLS, ROWS_TOTAL
     global HUD_ROWS, MAP_TOP, BUILD_BAR_ROWS, MAP_ROWS, UI_SCALE
+    global BTN_W, PANEL_W
+    global SEL_COLS, SEL_ROWS, SEL_NODE_W, SEL_NODE_H, SEL_GAP_X, SEL_GAP_Y, SEL_Y0
+    global OVER_W, ONBOARD_W
     SCREEN_W, SCREEN_H = _P["sw"], _P["sh"]
     CELL        = _P["cell"]
     COLS        = SCREEN_W // CELL
@@ -90,6 +122,13 @@ def apply_profile():
     BUILD_BAR_ROWS = _P["build_bar_rows"]
     MAP_ROWS    = ROWS_TOTAL - HUD_ROWS - BUILD_BAR_ROWS
     UI_SCALE    = _P["ui"]
+    # 内容驱动的横向尺寸（见 PROFILES 注释：字宽不随屏宽连续变化）
+    BTN_W       = _P["btn_w"]
+    PANEL_W     = _P["panel_w"]
+    SEL_COLS, SEL_ROWS = _P["sel_cols"], _P["sel_rows"]
+    SEL_NODE_W, SEL_NODE_H = _P["sel_node_w"], _P["sel_node_h"]
+    SEL_GAP_X, SEL_GAP_Y, SEL_Y0 = _P["sel_gap_x"], _P["sel_gap_y"], _P["sel_y0"]
+    OVER_W, ONBOARD_W = _P["over_w"], _P["onboard_w"]
 
 
 SCREEN_W, SCREEN_H = 1280, 720
@@ -101,6 +140,11 @@ MAP_TOP     = HUD_ROWS * CELL   # 80
 BUILD_BAR_ROWS = 2
 MAP_ROWS    = ROWS_TOTAL - HUD_ROWS - BUILD_BAR_ROWS   # 14
 UI_SCALE    = 1.00              # UI 几何缩放（见 PROFILES[*].ui）
+BTN_W       = 200               # 内容驱动（见 PROFILES[*].btn_w）
+PANEL_W     = 360               # 内容驱动（见 PROFILES[*].panel_w）
+SEL_COLS, SEL_ROWS, SEL_NODE_W, SEL_NODE_H = 5, 4, 170, 110
+SEL_GAP_X, SEL_GAP_Y, SEL_Y0 = 35, 26, 108
+OVER_W, ONBOARD_W = 760, 820
 apply_profile()
 
 # ── 经济（v0.4：小学生实测"发育过好"→全面收紧+波次加厚）──────────
@@ -770,7 +814,13 @@ def gen_header():
         kch=K_CHOPPER, afwv=AIR_FROM_WAVE,
         ksh=K_SHIELD, shw=SHIELD_FROM_WAVE,
         levels="\n".join(lv_c), nlv=len(LEVELS), pal=pal, themes=themes_c,
-        blocked=blocked_c)
+        blocked=blocked_c,
+        # v0.5.1 内容驱动的横向 UI 尺寸（见 PROFILES 注释）
+        btn_w=BTN_W, panel_w=PANEL_W,
+        sel_cols=SEL_COLS, sel_rows=SEL_ROWS,
+        sel_node_w=SEL_NODE_W, sel_node_h=SEL_NODE_H,
+        sel_gap_x=SEL_GAP_X, sel_gap_y=SEL_GAP_Y, sel_y0=SEL_Y0,
+        over_w=OVER_W, onboard_w=ONBOARD_W)
     open(out_header(), "w").write(txt)
 
 HEADER_TPL = """// SPDX-License-Identifier: MIT
@@ -812,8 +862,13 @@ static const Waypoint ALL_WP[] = { %(wp)s };
 //   纵向按 MAP_TOP / BUILD_BAR_H 居中。这样换 profile 时不需要再改这里，
 //   也不会出现"漏改了某个硬编码"的沉默回归——布局的每一处都可见地依赖 SCREEN_W。
 
-// NEXT WAVE 按钮：宽 = 屏宽 × 15.625%%（1280 → 200），锚右缘
-#define BTN_W        ((SCREEN_W * 15625) / 100000)
+// NEXT WAVE 按钮：锚右缘。
+// ⚠️ v0.5.1：宽度从"屏宽 × 15.625%%"改回**profile 给的绝对值**。
+//   比例法的病根：容器里装的是字，字宽只由 scale 定、不随屏宽连续变化。
+//   720 × 15.625%% = 112，而 "NEXT WAVE"@scale2 = 108，加 20 内边距要 128
+//   ——模拟器直接报 "[EN] btn: NEXT_WAVE 106px overflows"。
+//   容器宽度是**内容驱动的下界**，不是屏宽的百分比。
+#define BTN_W        %(btn_w)d
 #define BTN_X        (SCREEN_W - BTN_W - 12)
 #define BTN_H        (MAP_TOP - 16)
 #define BTN_Y        8
@@ -842,13 +897,38 @@ static const Waypoint ALL_WP[] = { %(wp)s };
 #define SLOT_NSCALE   (SLOT_W >= 180 ? 2 : 1)       // 塔名字号（窄槽用 1）
 #define SLOT_TX       40                            // 槽内文字起始 x（图标右侧）
 
-// 塔面板：宽 = 屏宽 × 28.125%%（1280 → 360），高 = 地图区高 × 36.6%%
-#define PANEL_W       ((SCREEN_W * 28125) / 100000)
+// 塔面板：宽 = profile 绝对值（tab5 360 / claw4 300），高 = 地图区高 × 36.6%%
+// ⚠️ v0.5.1：同 BTN_W，宽度改回内容驱动的绝对值。
+//   720 × 28.125%% = 202，而面板内容（属性行 210 起 + 60 宽 + 14 边距）
+//   需要 284 —— 属性文字直接画到面板框外（模拟器 3 项 overflow）。
+//   360 在 720 屏上占 50%%、300 占 41.7%%，都是"必须的代价"：
+//   面板是模态的（打开时世界暂停、且会自动翻到塔的另一侧），可以宽。
+#define PANEL_W       %(panel_w)d
 #define PANEL_H       ((MAP_TOP + MAP_ROWS*CELL) * 366) / 1000
+// 面板内两列属性标签/数值的 x（相对面板左缘）。
+//   tab5(360)： 14 /  69 / 150 / 209   ← 与 v0.4.x 的硬编码逐像素一致
+//   claw4(300)：14 /  58 / 125 / 174
+// 比例而非固定值：面板变窄时列跟着收，不会把数值列推出右边缘。
+#define PANEL_PAD     14
+#define PA_LBL1_X     (PANEL_PAD)
+#define PA_VAL1_X     ((PANEL_W * 194) / 1000)
+#define PA_LBL2_X     ((PANEL_W * 417) / 1000)
+#define PA_VAL2_X     ((PANEL_W * 583) / 1000)
 #define PBTN_UP_X     12
 #define PBTN_UP_Y     (PANEL_H / 2 - 36)
 #define PBTN_W        ((PANEL_W - 32) / 2)
 #define PBTN_H        72
+
+// 居中浮层（GAME OVER / LEVEL CLEAR / 引导）：宽度夹到屏宽内，留 40 边距。
+//   tab5：min(760, 1240) = 760 / min(820, 1240) = 820（原值不变）
+//   claw4：min(760, 680) = 680 / min(820, 680) = 680
+// ⚠️ v0.5.1：原实现写死 760/820，720 屏上 (720-760)/2 = -20 —— 面板左右
+//   各出屏 20px，且引导框最外侧的点击不在命中区里（教程推不动）。
+//   这类"居中但忘了夹宽度"的 bug 没有断言能抓（见 sim/run.cpp 新增的
+//   checkOverlayFit）。
+#define OVER_W        (%(over_w)d < (SCREEN_W - 40) ? %(over_w)d : (SCREEN_W - 40))
+#define ONBOARD_W     (%(onboard_w)d < (SCREEN_W - 40) ? %(onboard_w)d : (SCREEN_W - 40))
+#define ONBOARD_H     130
 
 #define START_GOLD      %(gold)d
 #define START_LIVES     %(lives)d
@@ -991,15 +1071,27 @@ static const Theme THEMES[] = {
 };
 #define THEME_COUNT ((int)(sizeof(THEMES)/sizeof(THEMES[0])))
 
-// ── level select screen (v0.4): 5 x 4 node grid（20 关）──
-#define SEL_COLS      5
-#define SEL_ROWS      4
-#define SEL_NODE_W    170
-#define SEL_NODE_H    110
-#define SEL_GAP_X     35
-#define SEL_GAP_Y     26
-static inline int selNodeX(int i) { return (SCREEN_W - (SEL_COLS*SEL_NODE_W + (SEL_COLS-1)*SEL_GAP_X)) / 2 + (i %% SEL_COLS) * (SEL_NODE_W + SEL_GAP_X); }
-static inline int selNodeY(int i) { return 108 + (i / SEL_COLS) * (SEL_NODE_H + SEL_GAP_Y); }
+// ── level select screen: node grid（20 关）──
+// v0.5.1：列数/节点尺寸改为 profile 提供。
+//   tab5  5 列 × 4 行，170x110 间距 35/26 → 网格 990x518（左右各留 145）
+//   claw4 4 列 × 5 行，148x100 间距 22/18 → 网格 658x572（左右各留 31）
+// 原实现把 5×170 写死，720 屏上网格 990 宽 → 居中后左右各出屏 135px，
+// L1/L5/L11/L16 四个节点完全看不见。**这个没有任何断言在守**
+// （v0.5.0 的断言只看文字宽度，不看容器）——所以只能靠真机截图发现。
+#define SEL_COLS      %(sel_cols)d
+#define SEL_ROWS      %(sel_rows)d
+#define SEL_NODE_W    %(sel_node_w)d
+#define SEL_NODE_H    %(sel_node_h)d
+#define SEL_GAP_X     %(sel_gap_x)d
+#define SEL_GAP_Y     %(sel_gap_y)d
+#define SEL_GRID_W    (SEL_COLS*SEL_NODE_W + (SEL_COLS-1)*SEL_GAP_X)
+#define SEL_GRID_H    (SEL_ROWS*SEL_NODE_H + (SEL_ROWS-1)*SEL_GAP_Y)
+static inline int selNodeX(int i) { return (SCREEN_W - SEL_GRID_W) / 2 + (i %% SEL_COLS) * (SEL_NODE_W + SEL_GAP_X); }
+static inline int selNodeY(int i) { return %(sel_y0)d + (i / SEL_COLS) * (SEL_NODE_H + SEL_GAP_Y); }
+// 节点内部三行（编号 / 关卡名 / 星级）的 y 偏移，按节点高度比例
+#define SEL_NUM_DY    ((SEL_NODE_H * 127) / 1000)
+#define SEL_NAME_DY   ((SEL_NODE_H * 564) / 1000)
+#define SEL_STAR_DY   ((SEL_NODE_H * 745) / 1000)
 """
 
 

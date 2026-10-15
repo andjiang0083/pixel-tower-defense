@@ -1,31 +1,37 @@
 /* SPDX-License-Identifier: MIT
  * Copyright (c) 2026 andjiang0083
  */
-// i18n.h — 界面文本双语表（v0.4.2）
+// i18n.h — 界面文本表（v0.5.0：英文单一语言）
 // ----------------------------------------------------------------------------
-// 语言在标题界面选择，NVS 记忆（main.cpp 键 "lang"），默认英文（开源默认）。
-// 中文渲染不走 ASCII 点阵：pixel_text.h 遇到 UTF-8 高位字节自动切
-// cn_font.h（16x16，由 tools/gen_cnfont.py 从**本文件 CN 列**自动收字生成）。
-// ⚠️ 新增界面文本时必须：① 在两张表同序补条目；② 重跑 gen_cnfont.py
-//    （CI 漂移检查会抓没重跑的情况）。
-// ⚠️ v0.4.3 教训：**渲染代码里不允许出现硬编码中文**。v0.4.2 的 drawTitle
-//    把"像素塔防"直接写在代码里，绕过本表 → gen_cnfont 没收这 4 个字 →
-//    中文用户的开机标题缺 3 个字（截图才发现）。现在 px_text 缺字会累加
-//    s_cnMissing 计数器（pixel_text.h），仿真断言它为 0——系统性防线。
+// ⚠️ v0.5.0（Claw4 移植）决定：**移除中文支持，界面只保留英文**。
+//
+// 为什么删而不是"窄屏降级"：
+//   v0.4.2 起的中文走 cn_font.h 的 **16x16 固定字形**（px_text.h: CN_ADV =
+//   17px/字），且**不随 scale 缩小**（CN_FONT_H 固定 16）。于是 4 个汉字
+//   = 68px 起，在 Claw4 的 116px 建造栏槽 / 202px 塔面板里必然溢出；
+//   而 720x720 的屏又没有余量把槽和面板加宽到能放下。
+//   v0.5.0 曾加过 cnRenderable() 窄屏自动降级，但那只是把中文**藏起来**——
+//   表、字库（17.7KB Flash）、生成器、CI 检查全都还在，是一份永远走不到的
+//   死代码。既然 Claw4 才是当前的真机目标，就把它整条删掉。
+//
+// 删掉了什么（一并从仓库移除，不留孤儿）：
+//   · STR_CN[] 文案表 与 LANG_CN
+//   · src/cn_font.h + tools/gen_cnfont.py / check_cnfont.py / cn_glyph_rule.py
+//   · px_text.h 的 UTF-8 高位字节分支（px_cnChar / CN_ADV / s_cnMissing）
+//   · 标题界面的语言切换按钮（EN/中文 两个都要点，去掉后整组移除）
+//   · NVS "lang" 键的存读
+//   · CI 的 cn_font 语义覆盖检查
+//
+// TR() 保留：它是界面文本的**唯一入口**，40+ 处调用点不动。
+//  将来若恢复双语，只需补回 STR_<lang> 表与 px_cnChar，TR() 内部切换即可。
+//
 // 关卡名 / BOSS 名 / 塔名是 ASCII 专名，不翻译（保持像素字统一）。
 // ----------------------------------------------------------------------------
 #pragma once
 #include <stdint.h>
 
-enum LangId : uint8_t { LANG_EN = 0, LANG_CN = 1, LANG_COUNT = 2 };
-
 enum StrId : uint8_t {
   STR_TITLE_HINT = 0,   // 标题界面：点击开始
-  STR_TITLE_CN,         // v0.4.3：标题界面的中文标题（英文模式用 drawRainbow 画彩色 PIXEL TOWER DEFENSE，不用此条）
-  STR_LANG_EN,          // v0.4.3：语言按钮标签——显示"目标语言"名（惯例）：EN 模式显示 ENGLISH/中文，CN 模式显示 英文/中文
-  STR_LANG_CN,          // v0.4.3：同上（中文按钮）。两者都走表，否则"中文"二字不进字库（v0.4.2 英文模式下中文按钮是空框）
-  STR_VERSION,          // "版本"
-  STR_LANG,             // "语言"
   STR_HP,               // HUD 生命标签
   STR_WAVE,             // HUD 波次标签
   STR_FIGHTING,         // 按钮：战斗中
@@ -69,9 +75,8 @@ enum StrId : uint8_t {
   STR_COUNT
 };
 
-// 两张表必须同序同量（gen_cnfont.py 与编译期都会间接校验）
 static const char* const STR_EN[STR_COUNT] = {
-  "TAP TO START", "PIXEL TOWER DEFENSE", "ENGLISH", "\xE4\xB8\xAD\xE6\x96\x87", "VERSION", "LANGUAGE",
+  "TAP TO START",
   "HP", "WAVE", "FIGHTING", "NEXT WAVE",
   "TAP SLOT", "THEN MAP", "TAP TOWER=UP", "NEED",
   "DMG", "RNG", "SLOW", "PULSE", "SPLASH", "SINGLE", "NO-ARMOR",
@@ -89,62 +94,5 @@ static const char* const STR_EN[STR_COUNT] = {
   "BUILD ZONE LOCKED",
 };
 
-static const char* const STR_CN[STR_COUNT] = {
-  "点击开始", "像素塔防", "英文", "中文", "版本", "语言",
-  "生命", "波次", "战斗中", "下一波",
-  "点塔位", "再点草地", "点塔=升级", "金币不足",
-  "伤害", "射程", "减速", "脉冲", "溅射", "单体", "无视护甲",
-  "不攻击 - 产金币",
-  "升级", "卖出", "满", "级", "金币不足",
-  "选择关卡", "通关后解锁下一关",
-  "游戏结束", "关卡通关", "击杀 ", "金币 ", "波次 ",
-  "点击重开", "点击下一关", "全部通关 - 点击重玩",
-  "已击败：",
-  "无尽模式", "挑战二百五十波", "最高",
-  "第1步/3 - 点草地建塔",
-  "第2步/3 - 点下一波开战",
-  "第3步/3 - 拦住所有敌人！",
-  "点击继续",
-  "建造区被封锁",
-};
-
-// ── 运行时选择 ─────────────────────────────────────────────────────
-static uint8_t g_lang = LANG_EN;
-static inline void setLang(uint8_t l) { g_lang = (l < LANG_COUNT) ? l : LANG_EN; }
-
-// ── v0.5.0（Claw4 移植）：窄屏自动降级为英文 ───────────────────────
-// 病根：中文走cn_font.h 的 **16x16 固定字形**（px_text.h: CN_ADV = 17px/字），
-//   且中文**不随 scale 缩小**（CN_FONT_H 固定 16）。于是 4 个汉字 = 68px 起，
-//   在 Claw4 的 116px 建造栏槽位 / 202px 塔面板里必然溢出——模拟器实测
-//   53 项断言失败，全部是"overflows slot / overflows panel / overflows strip"。
-//
-// 为什么在这里解决而不是到处改：TR() 是界面文本的**唯一入口**（原作者注释
-//   明说"界面唯一入口"）。在这里按屏宽降级，一处生效、全局一致，
-//   且**不动 i18n.h 的任何文案表**——双语内容一字不丢，只是窄屏不显示。
-//
-//阈值怎么定的：中文最短的实用标签是 2 字（"生命"/"金币"）= 34px，
-//   加上槽内图标占位 40px 与边距，槽宽需 >= 108px。1280 屏槽宽 210、
-//   720 屏槽宽 116 —— 用 150 做阈值把两种屏明确分开，
-//   介于其间的屏宽（如 1080p 手机横屏）也走英文，不会半途崩。
-#define I18N_CN_MIN_SLOT_W 150
-static inline bool cnRenderable(void) {
-#if defined(SCREEN_W)
-  return (SCREEN_W >= I18N_CN_MIN_SLOT_W);
-#else
-  return true;
-#endif
-}
-
-static inline bool langCN(void) {
-  // langCN() 的语义是"当前**渲染**中文"，不只是"用户选了中文"。
-  // 标题界面的语言切换按钮仍用 g_lang 判断（见 render.h drawTitle），
-  // 所以用户在窄屏上选中文仍然被记住，回到宽屏依然生效。
-  return g_lang == LANG_CN && cnRenderable();
-}
-// 用户当前选择的语言（无视屏宽）——语言按钮用它，不用 langCN()
-static inline bool langPickedCN(void) { return g_lang == LANG_CN; }
-
-// 取当前语言文本（界面唯一入口）
-static inline const char* TR(StrId id) {
-  return langCN() ? STR_CN[id] : STR_EN[id];
-}
+// 取界面文本（v0.5.0：英文单一语言，TR 是唯一入口）
+static inline const char* TR(StrId id) { return STR_EN[id]; }

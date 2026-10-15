@@ -31,7 +31,11 @@ static inline void resetRenderCaches(void) {
 // "SURVIVE 250 WAVES" 那行正好被槽位切掉（真机同款：renderFrame 先画建造栏、
 // updateOverlays 后画通关面板，按钮画在槽位之上）。任何一边几何改动都不会再撞。
 // 通关面板底边 = MAP_TOP + (SCREEN_H-MAP_TOP-320)/2 + 320 = 540，按钮区在 540..640。
-#define ENDLESS_BTN_X 380
+// v0.5.1：x 从写死的 380 改为**按面板居中**。原值 380 是按 1280 屏
+//   （面板 760 宽、居中后左缘 260，按钮在面板内偏右 120）算的；
+//   720 屏面板收窄到 680、左缘 20，按钮仍在 380 → 相对面板右偏了 100px，
+//   和面板内的其它居中文字（LEVEL CLEAR / 星级 / 提示）不是一条中轴。
+#define ENDLESS_BTN_X ((SCREEN_W - ENDLESS_BTN_W) / 2)
 #define ENDLESS_BTN_Y (BUILD_BAR_Y - ENDLESS_BTN_H - 16)   // = 560，距槽位 16px、距面板 20px
 #define ENDLESS_BTN_W 280
 #define ENDLESS_BTN_H 64
@@ -92,19 +96,55 @@ static void drawCellBase(Gfx* g, int col, int row) {
 //   "[EN] buildbar: TAP_SLOT hint 94px offscreen"
 // 这类失败的病根是同一个：布局不是"相对"的，写死了一个宽度的假设。
 //
-// v0.5.0 的做法：**右侧元素（波次/按钮）锚右缘，左侧元素锚左缘**，
-// 全部间距用 UI_S（= SCREEN_W/1280）缩放。这样换屏只是缩放，不会重排。
-#define UI_S   (SCREEN_W / 1280.0f)               // UI缩放基准：1280 宽 = 1.0
+// v0.5.0 的做法：**右侧元素（波次/按钮）锚右缘，左侧元素锚左缘**。
+//
+// v0.5.1 收尾：把"按 UI_S 等比缩放"彻底换成**两段各自链式推导**。
+//   缩放这条路之所以走不通，是因为 HUD 里混着两类东西：
+//     · 位置 —— 可以等比缩（x = 1280 基值 × UI_S）
+//     · 内容 —— 不能缩（字号只有 2/3 两档，且必须是整数像素）
+//   位置缩到 0.5625、内容只缩到 0.667，差出来的部分就是重叠。
+//   所以 UI_S 这个宏被删掉了：它看起来通用，实际上把"位置"和"内容"
+//   两种量纲混在一个系数里，任何改字号/加元素都会悄悄失配。
+//   现在的规则只有一条：**下个元素的位置 = 上一个的位置 + 它的实际占位**。
 #define HUD_Y  ((MAP_TOP - FONT_H * 3) / 2)       // 标签纵向基线（HUD 垂直居中）
 
+// ── 度量基元（必须先于左右两段的链式计算）────────────────────────
+#define FONT_ADV(scale)  ((FONT_W + 1) * (scale))
+#define HUD_PLATE_PAD    8                // 擦除框左右各留8px
+#define HUD_NUM_W(scale) (FONT_ADV(scale) * 7 + 2 * HUD_PLATE_PAD)  // "250/250"
+
+#if SCREEN_W >= 1024
+  #define HUD_SCALE 3
+#else
+  // 窄屏（720）：按钮占右侧 132px，字号降到 2 给波次区腾空间
+  #define HUD_SCALE 2
+#endif
+
 // ── 左段（锚左缘）：♥ HP 数字 SIEGE 警示条 $ 金币数字 ──────────────
-#define HPA_X   (12 * UI_S)                // ♥ 心跳图标
-#define HPL_X   (46 * UI_S)                       // "生命"/"HP" 标签
-#define HPN_X   (150 * UI_S)                      // 生命数字
-#define SIEGE_X (238 * UI_S)                      // SIEGE 警示条起点
-#define SIEGE_W (110 * UI_S)                      // 放得下 "BUILD ZONE LOCKED"
-#define DOL_X   (352 * UI_S)                      // "$" 金币符号
-#define GNUM_X  (400 * UI_S)                      // 金币数字
+// v0.5.1：左段也改成**从左往右链式排布**，与右段对称。
+//
+// 之前左段是把 1280 宽下的一串绝对 x（12/46/150/238/352/400）统一乘
+// UI_S 缩放。位置缩了，**内容宽度没缩**（字号是独立的 HUD_SCALE），
+// 于是在 720 宽下相邻元素互相吃掉——模拟器实测：
+//   "[EN] hud: HP num box overlaps SIEGE strip"（84+56 > 133）
+//   "[EN] hud: SIEGE_WARN 101px overflows strip(62)"
+// 根因与右段 v0.5.0 踩的是同一个：**坐标等比缩放、内容宽度不缩放**。
+// 位置按 1280 缩到 720（×0.5625），可字号只从 3 降到 2（×0.667），
+// 两者的差就是重叠量。UI_S 这类"全局缩放系数"解决不了这个问题。
+//
+// 修法照搬右段：段内按**实际占位**往后推（图标宽 / 文本宽 / 擦除框宽），
+// 每个元素的位置由前一个算出。加元素或改字号，整条链自动重排。
+#define HUD_ICON_W     (4 * 5)                              // ♥ 图标 5x7 @scale4
+#define HUD_HP_ERASE_W (FONT_ADV(HUD_SCALE) * 2 + 2 * HUD_PLATE_PAD)
+#define HPA_X   12                                          // ♥ 心跳图标
+#define HPL_X   (HPA_X + HUD_ICON_W + 8)                    // "HP" 标签
+#define HPN_X   (HPL_X + FONT_ADV(HUD_SCALE) * 2 + 8)        // 生命数字（2 位）
+#define SIEGE_X (HPN_X + HUD_HP_ERASE_W)                    // SIEGE 警示条起点
+// 条宽 = 内容宽（"BUILD ZONE LOCKED" 17 字符 @scale1），不是按屏宽缩放。
+// v0.5.0 的 SIEGE_W = 110*UI_S = 62px，而文字本身 101px —— 缩放与内容脱节。
+#define SIEGE_W (FONT_ADV(1) * 17)
+#define DOL_X   (SIEGE_X + SIEGE_W + 8)                     // "$" 金币符号
+#define GNUM_X  (DOL_X + FONT_ADV(HUD_SCALE) + 8)           // 金币数字
 
 // ── 右段：从 BTN_X（按钮左缘）往左链式排布───────────────────────────
 // ⚠️ 这一段曾经反复踩"算出来刚好、实际擦除框伸进按钮"的坑（v0.2.1 真机
@@ -115,27 +155,13 @@ static void drawCellBase(Gfx* g, int col, int row) {
 // v0.5.0 的修法：右侧链**从按钮左缘往左倒推**，每个元素的位置由前一个的
 //   实际占位算出，而不是各自独立地"离按钮 X 像素"。新增元素或改字号时，
 //   整条链自动重排，不可能再重叠。
-#define FONT_ADV(scale)  ((FONT_W + 1) * (scale))
-#define HUD_PLATE_PAD    8                // 擦除框左右各留8px
-#define HUD_NUM_W(scale) (FONT_ADV(scale) * 7 + 2 * HUD_PLATE_PAD)  // "250/250"
-
-#if SCREEN_W >= 1024
-  #define HUD_SCALE 3
-#else
-  // 窄屏（720）：按钮占右侧 112px，字号降到 2 给波次区腾空间
-  #define HUD_SCALE 2
-#endif
-
 // 波次数字：擦除框右缘恰好贴住 BTN_X
 #define WNUM_X (BTN_X + HUD_PLATE_PAD - HUD_NUM_W(HUD_SCALE))
 // WAVE 标签：在波次数字左侧留一个缝
 #define WLBL_X (WNUM_X - FONT_ADV(HUD_SCALE) * 4 - HUD_PLATE_PAD)
-// 无尽 BEST：紧贴 WAVE 标签左侧。块宽 = 标签 + 6 + 数字(3字)，再留8px 缝。
-//   英文标签 "BEST" = 4×6 = 24px；**中文"最高" = 2×17 = 34px**——中文 16x16
-//   字形固定宽、不随 scale 缩放，所以这里的余量必须按中文算，
-//   否则中文模式下 "42" 会叠在 "W" 上（英文模式看不出来）。
-//   34 + 6 + 17 + 8 = 65。
-#define BEST_X (WLBL_X - 65)
+// 无尽 BEST：紧贴 WAVE 标签左侧。块宽 = 标签("BEST") + 6 + 数字(3字)，再留 8px 缝。
+//   英文标签 "BEST" = 4×6 = 24px；数字 3×6 = 18px → 24 + 6 + 18 + 8 = 56。
+#define BEST_X (WLBL_X - (FONT_ADV(1) * 4 + 6 + FONT_ADV(1) * 3 + 8))
 
 // HUD 静态标签（♥ / HP / $ / WAVE）——只画一次，两处重画共用同一份
 static void drawHudLabels(Gfx* g) {
@@ -284,7 +310,7 @@ static void drawHud(Gfx* g) {
   char buf[16];
 
   // HP：数字前留心跳图标位
-  g->fillRect(HPN_X - 8, HUD_ERASE_Y, 64 * UI_S, HUD_ERASE_H, C_UI_BG);
+  g->fillRect(HPN_X - HUD_PLATE_PAD, HUD_ERASE_Y, HUD_HP_ERASE_W, HUD_ERASE_H, C_UI_BG);
   px_itoa(g_w.lives, buf);
   px_text(g, HPN_X, HUD_Y, buf, g_w.lives <= 5 ? C_HP_LOW : C_TEXT, HUD_SCALE);
 
@@ -660,39 +686,43 @@ static void drawTowerPanel(Gfx* g, const Tower& t) {
   g->drawRect(px, py, PANEL_W, PANEL_H, col);
   g->drawRect(px + 2, py + 2, PANEL_W - 4, PANEL_H - 4, col);
 
+  // v0.5.1：面板内 x 全部改用 PA_*（config_gen.h 按 PANEL_W 比例算出）。
+  //   原实现是 14/70/150/210 四个写死偏移，隐含 PANEL_W=360。
+  //   claw4 的 PANEL_W=300 时 210+60(5字符@scale2)=270 已经贴到右边缘，
+  //   再宽一点的文字直接画到框外（模拟器报 "attr value overflows"）。
   char buf[24];
   // 标题行：塔名 + LV
-  px_text(g, px + 14, py + 12, TOWER_TYPES[t.type].disp, C_TEXT, 3);
+  px_text(g, px + PA_LBL1_X, py + 12, TOWER_TYPES[t.type].disp, C_TEXT, 3);
   strcpy(buf, "LV"); px_itoa(t.level, buf + 2);
-  px_text(g, px + PANEL_W - px_textWidth(buf, 3) - 14, py + 12, buf, C_GOLD, 3);
+  px_text(g, px + PANEL_W - px_textWidth(buf, 3) - PANEL_PAD, py + 12, buf, C_GOLD, 3);
 
   // 属性行：DMG / RNG（冰霜塔显示 SLOW，能量塔显示产金）
   bool noRange = false;                          // v0.3.0：能量塔没有射程预览
   px_itoa(towerDamage(t), buf);
   if (t.type == 3) {                                   // v0.3.0 能量塔
-    px_text(g, px + 14, py + 58, "+$", C_GOLD, 2);
-    px_text(g, px + 70, py + 58, buf, C_GOLD, 2);
-    px_text(g, px + 150, py + 58, TR(STR_PULSE), C_TEXT_DIM, 2);
+    px_text(g, px + PA_LBL1_X, py + 58, "+$", C_GOLD, 2);
+    px_text(g, px + PA_VAL1_X, py + 58, buf, C_GOLD, 2);
+    px_text(g, px + PA_LBL2_X, py + 58, TR(STR_PULSE), C_TEXT_DIM, 2);
     px_itoa((int)towerFireMs(t), buf);
     strcat(buf, "MS");
-    px_text(g, px + 210, py + 58, buf, C_TEXT, 2);
-    px_text(g, px + 14, py + 84, TR(STR_NO_ATTACK), C_TEXT_DIM, 1);
+    px_text(g, px + PA_VAL2_X, py + 58, buf, C_TEXT, 2);
+    px_text(g, px + PA_LBL1_X, py + 84, TR(STR_NO_ATTACK), C_TEXT_DIM, 1);
     noRange = true;
   } else if (t.type == 2) {
-    px_text(g, px + 14, py + 58, TR(STR_SLOW), C_FROST_RING, 2);
-    px_text(g, px + 14, py + 80, TR(STR_PULSE), C_TEXT_DIM, 2);
+    px_text(g, px + PA_LBL1_X, py + 58, TR(STR_SLOW), C_FROST_RING, 2);
+    px_text(g, px + PA_LBL1_X, py + 80, TR(STR_PULSE), C_TEXT_DIM, 2);
     px_itoa((int)towerRange(t), buf);
-    px_text(g, px + 150, py + 80, TR(STR_RNG), C_TEXT_DIM, 2);
-    px_text(g, px + 210, py + 80, buf, C_TEXT, 2);
+    px_text(g, px + PA_LBL2_X, py + 80, TR(STR_RNG), C_TEXT_DIM, 2);
+    px_text(g, px + PA_VAL2_X, py + 80, buf, C_TEXT, 2);
   } else {
-    px_text(g, px + 14, py + 58, TR(STR_DMG), C_TEXT_DIM, 2);
-    px_text(g, px + 70, py + 58, buf, C_TEXT, 2);
+    px_text(g, px + PA_LBL1_X, py + 58, TR(STR_DMG), C_TEXT_DIM, 2);
+    px_text(g, px + PA_VAL1_X, py + 58, buf, C_TEXT, 2);
     px_itoa((int)towerRange(t), buf);
-    px_text(g, px + 150, py + 58, TR(STR_RNG), C_TEXT_DIM, 2);
-    px_text(g, px + 210, py + 58, buf, C_TEXT, 2);
-    if (t.type == 1) px_text(g, px + 70, py + 84, TR(STR_SPLASH), C_SPLASH, 2);
-    if (TOWER_TYPES[t.type].splash_r > 0) px_text(g, px + 150, py + 84, TR(STR_NO_ARMOR), C_SPLASH, 1);
-    else px_text(g, px + 70, py + 84, TR(STR_SINGLE), C_TEXT_DIM, 1);
+    px_text(g, px + PA_LBL2_X, py + 58, TR(STR_RNG), C_TEXT_DIM, 2);
+    px_text(g, px + PA_VAL2_X, py + 58, buf, C_TEXT, 2);
+    if (t.type == 1) px_text(g, px + PA_VAL1_X, py + 84, TR(STR_SPLASH), C_SPLASH, 2);
+    if (TOWER_TYPES[t.type].splash_r > 0) px_text(g, px + PA_LBL2_X, py + 84, TR(STR_NO_ARMOR), C_SPLASH, 1);
+    else px_text(g, px + PA_VAL1_X, py + 84, TR(STR_SINGLE), C_TEXT_DIM, 1);
   }
 
   // UP / SELL 按钮
@@ -834,7 +864,7 @@ static void drawGameOver(Gfx* g) {
   for (int y = MAP_TOP; y < SCREEN_H; y += 8)
     for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
 
-  const int bw = 760, bh = 300;
+  const int bw = OVER_W, bh = 300;
   const int bx = (SCREEN_W - bw) / 2, by = MAP_TOP + (SCREEN_H - MAP_TOP - bh) / 2;
   g->fillRect(bx, by, bw, bh, C_UI_BG);
   g->drawRect(bx, by, bw, bh, C_BAD);
@@ -907,12 +937,14 @@ static void drawSelNode(Gfx* g, int i) {
 
   char buf[8]; px_itoa(i + 1, buf);
   if (unlocked) {
-    // v0.4：5×4=20 节点（170×110），字号/间距按新节点收窄
-    px_textCenter(g, x + SEL_NODE_W / 2, y + 14, buf, C_TEXT, 4);
-    px_textCenter(g, x + SEL_NODE_W / 2, y + 62, LEVELS[i].name,
+    // v0.5.1：三行的 y 偏移改用 SEL_*_DY（按节点高度比例，config_gen.h）。
+    //   原值 14/62/82 是按 110 高的节点调的；claw4 节点降到 100 高，
+    //   82 行的星星（size7 → 上下各 10px）底边 102 直接压出节点框。
+    px_textCenter(g, x + SEL_NODE_W / 2, y + SEL_NUM_DY, buf, C_TEXT, 4);
+    px_textCenter(g, x + SEL_NODE_W / 2, y + SEL_NAME_DY, LEVELS[i].name,
                   cleared ? C_GOLD : C_TEXT_DIM, 1);
     // v0.3.0：星级取代 "CLEAR"（未通关=三颗空星，收集进度可视化）
-    drawStarRow(g, x + SEL_NODE_W / 2, y + 82, 3, cleared ? g_stars[i] : 0, 7);
+    drawStarRow(g, x + SEL_NODE_W / 2, y + SEL_STAR_DY, 3, cleared ? g_stars[i] : 0, 7);
   } else {
     // 锁图标：方块+横梁，纯矩形
     const int lx = x + SEL_NODE_W / 2 - 18, ly = y + SEL_NODE_H / 2 - 10;
@@ -945,7 +977,7 @@ static void drawLevelClear(Gfx* g) {
   for (int y = MAP_TOP; y < SCREEN_H; y += 8)
     for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
 
-  const int bw = 760, bh = CLEAR_PANEL_H;
+  const int bw = OVER_W, bh = CLEAR_PANEL_H;
   const int bx = (SCREEN_W - bw) / 2, by = CLEAR_PANEL_Y;
   g->fillRect(bx, by, bw, bh, C_UI_BG);
   g->drawRect(bx, by, bw, bh, C_GOLD);
@@ -983,34 +1015,19 @@ static void drawLevelClear(Gfx* g) {
 }
 
 // ── v0.4.2 标题界面 ───────────────────────────────────────────────
-// 开机第一屏：像素大标题 + 版本 + 语言选择（EN/中文，NVS 记忆）+ 点击开始。
-// 语言按钮几何（render 画 / actions 命中，唯一真源同 MUTE_BTN 惯例）
-// v0.5.0（Claw4 720 宽）：按钮组改为**按屏宽比例 + 整体居中**。
-// 原版写死 EN_X=430 / CN_X=650 / W=200 → 右缘 850，720 屏上中文按钮
-// 整个在屏外（真机截图里只看到 ENGLISH 一个）。
+// 开机第一屏：像素大标题 + 版本 + 点击开始。
 //
-// 布局规则：按钮宽 = 屏宽 × 15.6%（1280 → 200，与原值逐像素一致），
-// 组宽 = 2×W + 间距，整体居中。间距也按屏宽比例，保证任何宽度都居中。
-// 按钮宽：1280 屏上必须精确 = 200（原值），所以用 1280 为基准的比例。
-// gap = 20（原版 650-430-200 = 20，不是 24 —— 之前算错过一次）。
-// 1280 屏：W=200（原值）。窄屏不能等比缩到 112（"ENGLISH" 会很挤），
-// 改为**占屏宽 30%**（720 → 216），两个按钮 + 间距正好占 67%，居中后
-// 左右各留 ~119px，与标题两行文字的视觉宽度匹配。
-#define LANG_BTN_W   (SCREEN_W >= 1024 ? ((SCREEN_W * 200) / 1280) : (SCREEN_W * 3 / 10))
-#define LANG_BTN_GAP (SCREEN_W >= 1024 ? 20 : 16)
-#define LANG_BTN_Y   (SCREEN_W >= 1024 ? 330 : 336)
-#define LANG_BTN_H   56
-#define LANG_GRP_X   ((SCREEN_W - 2 * LANG_BTN_W - LANG_BTN_GAP) / 2)
-#define LANG_EN_X    (LANG_GRP_X)
-#define LANG_CN_X    (LANG_GRP_X + LANG_BTN_W + LANG_BTN_GAP)
-// v0.4.3：LANGUAGE/语言 标签居中在按钮组上方。y 命名化，仿真断言守着
-// "标签底边（含 16px 中文点阵）不得贴到按钮顶边"。
-#define TITLE_LANG_LBL_Y (SCREEN_W >= 1024 ? 302 : 312)
-
-// v0.4.2：无尽模式入口按钮（L10 通关画面面板下方；actions 命中共用）
-// （几何宏已前置到文件头，供 drawLevelClear 使用）
+// v0.5.1：语言按钮组整组删除（v0.5.0 去掉中文支持后，只剩英文一种语言，
+//   一个"选语言"的 UI 就没有意义了）。连带删掉 LANGUAGE 标签、
+//   LANG_* 几何宏、actions.h 的命中分支、NVS "lang" 键。
+//   副作用是标题界面腾出 ~90px 纵向空间（原按钮组 330..386），
+//   装饰带顺势上移（见下 drawTitle 的 TITLE_DECO_Y）。
+//
+// v0.5.0 曾把按钮组改成按屏宽比例居中（EN_X=430/CN_X=650 在 720 宽下
+//   右缘 850 整个出屏）。那些几何宏随按钮一起删掉了——不留孤儿宏。
 
 // 彩虹像素字：逐字母循环取色（先画 6px 黑色投影，再画彩色本体）
+// v0.5.1：删掉中文 16px 分支（cn_font.h 已移除），现在纯 ASCII。
 static void drawRainbow(Gfx* g, int cx, int y, const char* s, int scale,
                         const uint16_t* cols, int ncol) {
   const int adv = (FONT_W + 1) * scale;
@@ -1018,14 +1035,21 @@ static void drawRainbow(Gfx* g, int cx, int y, const char* s, int scale,
   int x = cx - w / 2, i = 0;
   px_textCenter(g, cx + 6, y + 6, s, C_BG, scale);       // 投影（右下 6px）
   while (*s) {
-    if ((uint8_t)*s >= 0x80) {                           // 中文 16px：单色金
-      px_cnChar(g, x, y + (FONT_H * scale - CN_FONT_H) / 2, s, C_GOLD);
-      s += 3; x += CN_ADV; continue;
-    }
     px_char(g, x, y, *s++, cols[i % ncol], scale);
     x += adv; ++i;
   }
 }
+
+// 标题界面纵向布局（v0.5.1：全部按屏高比例，不再写死 110/180/272/580）
+// tab5 与 claw4 的屏高都是 720，所以逐像素值与 v0.5.0 完全一致；
+// 改成比例是为了以后换高度时不必再改一遍（与横向那次是同一类坑）。
+#define TITLE_Y1      ((SCREEN_H * 153) / 1000)   // 720 → 110
+#define TITLE_Y2      ((SCREEN_H * 250) / 1000)   // 720 → 180
+#define TITLE_VER_Y   ((SCREEN_H * 378) / 1000)   // 720 → 272
+// 装饰带（塔剪影 + 小兵 + 地面线）顶边。v0.5.1：0.694 → 0.620，
+// 语言按钮删掉后原位置（500）上方空了 200px，画面下重上轻。
+#define TITLE_DECO_Y  ((SCREEN_H * 620) / 1000)   // 720 → 446
+#define TITLE_HINT_Y  ((SCREEN_H * 806) / 1000)   // 720 → 580
 
 static void drawTitle(Gfx* g) {
   g->fillScreen(C_BG);
@@ -1041,44 +1065,19 @@ static void drawTitle(Gfx* g) {
   // 大标题：两行彩虹像素字（英文专名不翻译；中文模式加一行"像素塔防"）
   static const uint16_t RC[8] = { C_BAD, C_GOLD, C_HP_FULL, C_TOWER_FRO,
                                   C_TEXT, C_ENEMY_BOSS, C_TOWER_CAN, C_TOWER_LASER };
-  drawRainbow(g, SCREEN_W / 2, 110, "PIXEL TOWER", 7, RC, 8);
-  drawRainbow(g, SCREEN_W / 2, 180, "DEFENSE", 7, RC, 8);
-  // v0.4.3：中文标题必须走 TR(STR_TITLE_CN)——硬编码中文不进 STR_CN 表，
-  // gen_cnfont 就收不到字（v0.4.2 曾因此缺 3 字）。y=245：与版本号留 11px。
-  if (langCN()) px_textCenter(g, SCREEN_W / 2, 245, TR(STR_TITLE_CN), C_GOLD, 2);
+  drawRainbow(g, SCREEN_W / 2, TITLE_Y1, "PIXEL TOWER", 7, RC, 8);
+  drawRainbow(g, SCREEN_W / 2, TITLE_Y2, "DEFENSE", 7, RC, 8);
 
   // 版本号（金色，v0.4.3 起每次发版手改这里 + banner + publish.yaml）
-  char vb[24]; strcpy(vb, "v0.4.3");
-  px_textCenter(g, SCREEN_W / 2, 272, vb, C_GOLD, 3);
-
-  // 语言按钮：当前语言金色高亮
-  for (int i = 0; i < LANG_COUNT; ++i) {
-    const int bx = (i == LANG_EN) ? LANG_EN_X : LANG_CN_X;
-    const bool cur = ((int)g_lang == i);
-    g->fillRect(bx, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, C_SLOT_BG);
-    g->drawRect(bx, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, cur ? C_GOLD : C_GRASS_EDGE);
-    if (cur) g->drawRect(bx + 3, LANG_BTN_Y + 3, LANG_BTN_W - 6, LANG_BTN_H - 6, C_GOLD);
-    // v0.4.3：按钮标签走 TR——显示"目标语言"名（EN 模式：ENGLISH/中文；
-    // CN 模式：英文/中文）。硬编码会让字库漏收（见 i18n.h 头注教训）。
-    // v0.5.0：语言按钮的标签是"该语言自己的名字"，必须**绕开窄屏降级**。
-    // 窄屏把中文整体降级掉时，用 TR() 取 STR_LANG_CN 会拿到空串——
-    // 真机症状：ENGLISH 按钮有字，旁边中文按钮只剩一个空框。
-    // 所以这里直接查表，不经过 langCN() 的窄屏判断。
-    const char* label = (i == LANG_EN) ? STR_EN[STR_LANG_EN] : STR_EN[STR_LANG_CN];
-    px_textCenter(g, bx + LANG_BTN_W / 2, LANG_BTN_Y + 20, label,
-                  cur ? C_TEXT : C_TEXT_DIM, 2);
-  }
-  // v0.4.3：LANGUAGE 标签从"按钮左侧硬编码 x=360"改为**按钮组上方居中**
-  // ——旧版 8 字符×12px=94px 伸到 456，压进 ENGLISH 按钮（430）26px。
-  // 居中放置同时解决"按钮位置随语言宽度跳动"（固定左缘的方案会跳）。
-  px_textCenter(g, SCREEN_W / 2, TITLE_LANG_LBL_Y, TR(STR_LANG), C_TEXT_DIM, 2);
+  char vb[24]; strcpy(vb, "v0.5.1");
+  px_textCenter(g, SCREEN_W / 2, TITLE_VER_Y, vb, C_GOLD, 3);
 
   // 装饰带：塔剪影 + 小兵 + 地面线（全部矩形，复用塔的配色语言）
   // v0.5.0：横坐标从写死的 300/470/640/810/980 与 1120/1030/940/850
   //   改为**按屏宽等分排布**。原版 1280 屏下 5 个塔占 x[300,1010]，
   //   720 屏下只出 3 个（810、980 直接超屏）——真机截图正是如此。
   //   小兵同理：原 x 起于 1120，720 屏下一个都不显示。
-  const int gy = (int)(SCREEN_H * 0.694);      // 500 / 720
+  const int gy = TITLE_DECO_Y;
   g->fillRect(0, gy + 44, SCREEN_W, 4, C_GRASS_EDGE);
   for (int i = 0; i < 5; ++i) {                          // 塔剪影（等分排布）
     const int tx = (int)(SCREEN_W * (0.234 + i * 0.133)), ty = gy + 10;
@@ -1109,7 +1108,7 @@ static void drawTitle(Gfx* g) {
   //      亮层笔画正好落进暗层笔画的缝隙，两层互相穿插，依然是糊的重影。
   //      5x7 字模放大到 15px 后，笔画间距本来就 3px 量级——**这个尺寸下没有
   //      能做描边的余量**。星空是深底，亮色本身对比度已经够，不需要描边。
-  px_textCenter(g, SCREEN_W / 2, 580, TR(STR_TITLE_HINT), C_BTN_HI, 3);
+  px_textCenter(g, SCREEN_W / 2, TITLE_HINT_Y, TR(STR_TITLE_HINT), C_BTN_HI, 3);
 
   // 底部：仓库地址（开源项目惯例）
   px_textCenter(g, SCREEN_W / 2, SCREEN_H - 26,
@@ -1121,7 +1120,7 @@ static void drawTitle(Gfx* g) {
 static void drawOnboard(Gfx* g, int step) {
   const char* s = (step == 1) ? TR(STR_ONBOARD_1) :
                   (step == 2) ? TR(STR_ONBOARD_2) : TR(STR_ONBOARD_3);
-  const int bw = 820, bh = 130;
+  const int bw = ONBOARD_W, bh = ONBOARD_H;
   const int bx = (SCREEN_W - bw) / 2, by = SCREEN_H - bh - 150;
   // 半透明感压暗（稀疏暗块，同 Game Over 手法）
   // ⚠️ v0.4.3：网格 8px → 16px（块 4×4 → 8×8，覆盖率同为 25%，观感几乎一致）。

@@ -337,226 +337,244 @@ static void shotMode(int lv, int waveTarget, const char* out) {
          lv + 1, LV().name, g_w.wave, LV().waves, towers(), alive(), g_w.lives, g_w.gold, out);
 }
 
-// ── v0.4.3：UI 文字适配断言（中英双语 × 每个界面元素 × 容器宽度）──
+// ── v0.4.3：UI 文字适配断言（每个界面元素 × 容器宽度）──────────────
 // 动机：v0.4.2 标题界面的 LANGUAGE 标签硬编码 x=360，8 字符×12px=96px
 // 伸到 456，而 ENGLISH 按钮从 430 开始——重叠 26px。这类 bug 的特征是
 // "每个元素各自画得对、相对位置算错"，肉眼在截图里才发现，所以逐元素
 // 查容器。**新增界面文字时，在这里补一条对应的容器断言**——这是本项目
 // "截图评审"的制度化替代品。
+//
+// v0.5.1（Claw4 移植收尾）三处改动：
+//   ① 去掉语言循环。v0.5.0 起界面只有英文一种语言（见 i18n.h 头注），
+//      for(lang) 那个循环是在测一个不存在的分支。
+//   ② 断言里的容器尺寸从**写死的 760 / 820 / 210 / 14** 全部改为引用
+//      config_gen.h 的 OVER_W / ONBOARD_W / PA_* / SEL_*。
+//      写死才是真正的病根：实现侧已经随 profile 变了（claw4 的面板
+//      变 300、浮层夹到 680），断言却还在拿 1280 宽下的假想值做比较，
+//      于是一堆真 bug 在 CI 里全绿——这是 v0.4.3 注释里"改一处必漏一处"
+//      的加强版：**断言自己在骗人**。
+//   ③ 新增"容器整体在不在屏内"这一类断言。之前只比"文字 vs 容器"，
+//      容器自己出屏时两边都还是"合规"的。claw4 上一口气踩了四个：
+//        选关网格 990 宽（屏 720）→ 首列节点在屏外
+//        通关/失败面板 760 宽    → 左右各出屏 20
+//        引导对话框 820 宽      → 左右各出屏 50（且外侧点击不在命中区）
+//        无尽按钮 x=380 写死    → 与面板内其它居中文字不同轴
 static void checkUiTextFit(void) {
-  for (int lang = 0; lang < LANG_COUNT; ++lang) {
-    setLang(lang);
-    const char* L = (lang == LANG_CN) ? "CN" : "EN";
+  // ── 标题界面 ──────────────────────────────────────────────
+  CHECK(px_textWidth("PIXEL TOWER", 7) <= SCREEN_W - 40,
+        "title: PIXEL TOWER %dpx too wide", px_textWidth("PIXEL TOWER", 7));
+  CHECK(px_textWidth("DEFENSE", 7) <= SCREEN_W - 40,
+        "title: DEFENSE %dpx too wide", px_textWidth("DEFENSE", 7));
+  CHECK(px_textWidth(TR(STR_TITLE_HINT), 3) <= SCREEN_W - 120,
+        "title: STR_TITLE_HINT %dpx too wide", px_textWidth(TR(STR_TITLE_HINT), 3));
+  // v0.5.1 纵向链：每行 = 上一行 + 它的实际高度 + 间距，最后一行不压仓库行。
+  // 语言按钮组删掉后纵向重排过（装饰带 0.694H → 0.620H），这里锁住新间距。
+  CHECK(TITLE_Y1 + FONT_H * 7 + 7 <= TITLE_Y2,
+        "title: line1 bottom %d overlaps line2 @%d", TITLE_Y1 + FONT_H * 7, TITLE_Y2);
+  CHECK(TITLE_Y2 + FONT_H * 7 + 8 <= TITLE_VER_Y,
+        "title: line2 bottom %d overlaps version @%d", TITLE_Y2 + FONT_H * 7, TITLE_VER_Y);
+  CHECK(TITLE_VER_Y + FONT_H * 3 + 16 <= TITLE_DECO_Y,
+        "title: version bottom %d overlaps deco band @%d", TITLE_VER_Y + FONT_H * 3, TITLE_DECO_Y);
+  CHECK(TITLE_DECO_Y + 44 + 4 + 8 <= TITLE_HINT_Y,
+        "title: deco band bottom %d overlaps hint @%d", TITLE_DECO_Y + 48, TITLE_HINT_Y);
+  CHECK(TITLE_HINT_Y + FONT_H * 3 + 16 <= SCREEN_H - 26,
+        "title: hint bottom %d overlaps repo line @%d", TITLE_HINT_Y + FONT_H * 3, SCREEN_H - 26);
 
-    // ── 标题界面 ──────────────────────────────────────────────
-    // v0.4.3：LANGUAGE 标签改为按钮组上方居中（旧版 x=360 硬编码，
-    // EN 94px 伸进 ENGLISH 按钮 26px）。居中语义：不得宽于按钮组。
-    CHECK(px_textWidth(TR(STR_LANG), 2) <= (LANG_CN_X + LANG_BTN_W) - LANG_EN_X,
-          "[%s] title: STR_LANG %dpx wider than button group", L, px_textWidth(TR(STR_LANG), 2));
-    // 语言标签底边（中文点阵 16px 高于 ASCII 的 14px，取大者）不得贴按钮顶边
-    CHECK(TITLE_LANG_LBL_Y + CN_FONT_H + 8 <= LANG_BTN_Y,
-          "[%s] title: LANG label bottom %d too close to buttons @%d",
-          L, TITLE_LANG_LBL_Y + CN_FONT_H, LANG_BTN_Y);
-    // 中文标题（TR 化，v0.4.3）：不得宽于两行英文大标题的宽度量级
-    CHECK(px_textWidth(TR(STR_TITLE_CN), 2) <= 400,
-          "[%s] title: STR_TITLE_CN %dpx too wide", L, px_textWidth(TR(STR_TITLE_CN), 2));
-    // TAP TO START 双色叠字：不得贴屏幕边（居中）
-    CHECK(px_textWidth(TR(STR_TITLE_HINT), 3) <= SCREEN_W - 120,
-          "[%s] title: STR_TITLE_HINT %dpx too wide", L, px_textWidth(TR(STR_TITLE_HINT), 3));
-    // 按钮标签（v0.4.3 起走 TR：EN 模式 ENGLISH/中文，CN 模式 英文/中文）
-    CHECK(px_textWidth(TR(STR_LANG_EN), 2) <= LANG_BTN_W - 20,
-          "[%s] title: lang-en label %dpx overflows button", L, px_textWidth(TR(STR_LANG_EN), 2));
-    CHECK(px_textWidth(TR(STR_LANG_CN), 2) <= LANG_BTN_W - 20,
-          "[%s] title: lang-cn label %dpx overflows button", L, px_textWidth(TR(STR_LANG_CN), 2));
-
-    // ── HUD（v0.4.3：全部引用 render.h 的 HUD_* 命名常量，与绘制同源）──
-    // WAVE "250/250" 右缘必须 < NEXT WAVE 按钮左缘（v0.2.1 真机 bug #3 同型）
-    {
-      char wb[24]; strcpy(wb, "250/250");
-      CHECK(WNUM_X + px_textWidth(wb, HUD_SCALE) < BTN_X,
-            "[%s] hud: WAVE %dpx@%d overlaps button @%d",
-            L, px_textWidth(wb, HUD_SCALE), WNUM_X, BTN_X);
-    }
-    // GOLD 7 位（无尽）右缘 < BEST 起点
-    {
-      char gb[16]; strcpy(gb, "9999999");
-      CHECK(GNUM_X + px_textWidth(gb, HUD_SCALE) < BEST_X,
-            "[%s] hud: GOLD 7 digits overlaps BEST", L);
-    }
-    // BEST + 3 位数字右缘 < WAVE 标签左缘（旧版 BEST@770 → 数字伸到 813，
-    // 压住 WAVE@800；把 "42" 叠在 "W" 上的那个 bug）
-    CHECK(BEST_X + px_textWidth(TR(STR_BEST), 1) + 6 + px_textWidth("999", 1) < WLBL_X,
-          "[%s] hud: BEST block overruns WAVE label @%d", L, WLBL_X);
-    // "$" 必须完整落在 SIEGE 清空框与 GOLD 擦除框之间（v0.4.2 回归：
-    // 清空框宽 180 铺到 480，把 $ 每帧擦掉）
-    CHECK(SIEGE_X + SIEGE_W <= DOL_X,
-          "[%s] hud: SIEGE strip %d..%d erases $ @%d",
-          L, SIEGE_X, SIEGE_X + SIEGE_W, DOL_X);
-    CHECK(DOL_X + px_textWidth("$", HUD_SCALE) <= GNUM_X - 8,
-          "[%s] hud: $ overlaps GOLD erase box", L);
-    // HP 标签不得伸进 HP 数字擦除框
-    CHECK(HPL_X + px_textWidth(TR(STR_HP), 3) <= HPN_X - 8,
-          "[%s] hud: HP label %dpx@%d overlaps number box",
-          L, px_textWidth(TR(STR_HP), 3), HPL_X);
-    // HP 数字擦除框右缘 < SIEGE 条左缘
-    CHECK(HPN_X + 56 <= SIEGE_X,
-          "[%s] hud: HP num box overlaps SIEGE strip", L);
-    // SIEGE 警示条（清空区 SIEGE_X..+SIEGE_W）
-    CHECK(px_textWidth(TR(STR_SIEGE_WARN), 1) <= SIEGE_W,
-          "[%s] hud: SIEGE_WARN %dpx overflows strip(%d)",
-          L, px_textWidth(TR(STR_SIEGE_WARN), 1), SIEGE_W);
-    // NEXT WAVE / FIGHTING 按钮文字（内边距 20）
-    CHECK(px_textWidth(TR(STR_NEXT_WAVE), 2) <= BTN_W - 20,
-          "[%s] btn: NEXT_WAVE %dpx overflows", L, px_textWidth(TR(STR_NEXT_WAVE), 2));
-    CHECK(px_textWidth(TR(STR_FIGHTING), 2) <= BTN_W - 20,
-          "[%s] btn: FIGHTING %dpx overflows", L, px_textWidth(TR(STR_FIGHTING), 2));
-
-    // ── 建造栏 ────────────────────────────────────────────────
-    // v0.5.0：断言全部改用**绘制侧的真实变量**（SLOT_NSCALE / SLOT_TX /
-    //   BAR_HINT_X / BAR_HINT_SCALE），不再写死 scale=2 与 x+46。
-    //   原写法隐含"槽宽≥180、字号=2"的假设，720 宽下槽宽 116 → 断言测的是
-    //   一个绘制侧根本不画的字号，属于"断言与实现脱节"——正是 v0.4.3 注释里
-    //   记的那类 bug（"改一处必漏一处"）。
-    for (int i = 0; i < TT_COUNT; ++i) {
-      // 塔名：x + SLOT_TX 起，右缘 < 槽宽 - 26（避让对空角标）
-      CHECK(px_textWidth(TOWER_TYPES[i].disp, SLOT_NSCALE) + SLOT_TX
-                <= SLOT_W - 26,
-            "[%s] buildbar: %s name %dpx overflows slot (tx=%d sw=%d)",
-            L, TOWER_TYPES[i].disp,
-            px_textWidth(TOWER_TYPES[i].disp, SLOT_NSCALE), SLOT_TX, SLOT_W);
-      // 价格 3 位 + "$"：x + SLOT_TX 起，"$"+3 位数字
-      CHECK(SLOT_TX + (FONT_W + 1) * SLOT_NSCALE * 4 <= SLOT_W - 8,
-            "[%s] buildbar: price overflows slot (tx=%d sw=%d)",
-            L, SLOT_TX, SLOT_W);
-      // NEED（金币不足）：x + SLOT_TX 起
-      CHECK(px_textWidth(TR(STR_NEED), 1) + SLOT_TX <= SLOT_W - 8,
-            "[%s] buildbar: NEED %dpx overflows slot", L,
-            px_textWidth(TR(STR_NEED), 1));
-    }
-    // 右侧三行提示：位置/字号同样取绘制侧变量
-    {
-      CHECK(BAR_HINT_X + px_textWidth(TR(STR_TAP_SLOT), BAR_HINT_SCALE)
-                < SCREEN_W,
-            "[%s] buildbar: TAP_SLOT hint %dpx offscreen", L,
-            px_textWidth(TR(STR_TAP_SLOT), BAR_HINT_SCALE));
-      CHECK(BAR_HINT_X + px_textWidth(TR(STR_THEN_MAP), BAR_HINT_SCALE)
-                < SCREEN_W,
-            "[%s] buildbar: THEN_MAP hint offscreen", L);
-      CHECK(BAR_HINT_X + px_textWidth(TR(STR_TAP_TOWER), 1) < SCREEN_W,
-            "[%s] buildbar: TAP_TOWER hint offscreen", L);
-    }
-
-    // ── 塔面板（PANEL_W=360）──────────────────────────────────
-    for (int i = 0; i < TT_COUNT; ++i) {
-      // 标题行：塔名(px+14) 与 右对齐 "LV3" 之间至少留 20px
-      const int lvW = px_textWidth("LV3", 3);
-      CHECK(14 + px_textWidth(TOWER_TYPES[i].disp, 3) + 20 + lvW <= PANEL_W - 14,
-            "[%s] panel: %s name collides with LV", L, TOWER_TYPES[i].disp);
-    }
-    // 属性行右缘（px+210 起最多 5 字符 "$9999"/"500MS"）
-    CHECK(210 + 60 <= PANEL_W - 14, "[%s] panel: attr value overflows", L);
-    // NO ATTACK 行（scale1 最长 22 字符）
-    CHECK(px_textWidth(TR(STR_NO_ATTACK), 1) + 14 <= PANEL_W - 14,
-          "[%s] panel: NO_ATTACK %dpx overflows", L, px_textWidth(TR(STR_NO_ATTACK), 1));
-    // 按钮文字（PBTN_W=164 / SELL=PBTN_W-40=124）
-    CHECK(px_textWidth(TR(STR_UPGRADE), 2) <= PBTN_W - 20,
-          "[%s] panel: UPGRADE %dpx overflows", L, px_textWidth(TR(STR_UPGRADE), 2));
-    CHECK(px_textWidth(TR(STR_NEED_GOLD), 1) <= PBTN_W - 20,
-          "[%s] panel: NEED_GOLD %dpx overflows", L, px_textWidth(TR(STR_NEED_GOLD), 1));
-    CHECK(px_textWidth(TR(STR_SELL), 2) <= (PBTN_W - 40) - 20,
-          "[%s] panel: SELL %dpx overflows", L, px_textWidth(TR(STR_SELL), 2));
-    CHECK(px_textWidth(TR(STR_MAX), 3) <= PBTN_W - 20,
-          "[%s] panel: MAX %dpx overflows", L, px_textWidth(TR(STR_MAX), 3));
-    // "$9999" 价格（4 字符 scale2=48）
-    CHECK(48 <= PBTN_W - 20, "[%s] panel: price overflows", L);
-
-    // ── 选关界面 ──────────────────────────────────────────────
-    CHECK(px_textWidth(TR(STR_SELECT), 4) <= 900,
-          "[%s] select: title %dpx too wide", L, px_textWidth(TR(STR_SELECT), 4));
-    CHECK(px_textWidth(TR(STR_UNLOCK_HINT), 2) <= SCREEN_W - 120,
-          "[%s] select: unlock hint %dpx too wide", L, px_textWidth(TR(STR_UNLOCK_HINT), 2));
-    for (int i = 0; i < LEVEL_COUNT; ++i) {
-      CHECK(px_textWidth(LEVELS[i].name, 1) <= SEL_NODE_W - 20,
-            "[%s] select: L%d name %dpx overflows node", L, i + 1, px_textWidth(LEVELS[i].name, 1));
-    }
-
-    // ── 结算 / 通关（面板 760 宽，内边距 ~20）─────────────────
-    CHECK(px_textWidth(TR(STR_GAME_OVER), 6) <= 720,
-          "[%s] over: title %dpx too wide", L, px_textWidth(TR(STR_GAME_OVER), 6));
-    CHECK(px_textWidth(TR(STR_LEVEL_CLEAR), 6) <= 720,
-          "[%s] clear: title %dpx too wide", L, px_textWidth(TR(STR_LEVEL_CLEAR), 6));
-    CHECK(px_textWidth(TR(STR_TAP_RESTART), 3) <= 740,
-          "[%s] over: restart hint %dpx too wide", L, px_textWidth(TR(STR_TAP_RESTART), 3));
-    CHECK(px_textWidth(TR(STR_TAP_NEXT), 3) <= 740,
-          "[%s] clear: next hint %dpx too wide", L, px_textWidth(TR(STR_TAP_NEXT), 3));
-    CHECK(px_textWidth(TR(STR_ALL_CLEAR), 3) <= 740,
-          "[%s] clear: all-clear hint %dpx too wide", L, px_textWidth(TR(STR_ALL_CLEAR), 3));
-    // BOSS DOWN: + 最长 boss 名（GLASS TITAN 11 字符 scale2=132）
-    {
-      char bb[64]; strcpy(bb, TR(STR_BOSS_DOWN)); strcat(bb, "GLASS TITAN");
-      CHECK(px_textWidth(bb, 2) <= 740,
-            "[%s] clear: boss-down line %dpx too wide", L, px_textWidth(bb, 2));
-    }
-    // KILLS 999 GOLD 9999（scale2）
-    {
-      char bb[64]; strcpy(bb, TR(STR_KILLS)); strcat(bb, "999 ");
-      strcat(bb, TR(STR_GOLD_WORD)); strcat(bb, "9999");
-      CHECK(px_textWidth(bb, 2) <= 740,
-            "[%s] clear: kills/gold line %dpx too wide", L, px_textWidth(bb, 2));
-    }
-    // 无尽入口按钮（ENDLESS_BTN_W=280，内边距 20）
-    CHECK(px_textWidth(TR(STR_ENDLESS), 3) <= ENDLESS_BTN_W - 20,
-          "[%s] clear: ENDLESS %dpx overflows btn", L, px_textWidth(TR(STR_ENDLESS), 3));
-    CHECK(px_textWidth(TR(STR_ENDLESS_DESC), 1) <= ENDLESS_BTN_W - 20,
-          "[%s] clear: ENDLESS_DESC %dpx overflows btn", L, px_textWidth(TR(STR_ENDLESS_DESC), 1));
-    // v0.4.3：按钮的垂直夹缝——上不压通关面板、下不压建造栏槽位。
-    // 旧硬编码 Y=590 让按钮底边 654 埋进建造栏 640..720（"SURVIVE 250 WAVES" 被切）。
-    CHECK(ENDLESS_BTN_Y + ENDLESS_BTN_H <= BUILD_BAR_Y,
-          "[%s] clear: endless btn bottom %d overlaps build bar top %d",
-          L, ENDLESS_BTN_Y + ENDLESS_BTN_H, BUILD_BAR_Y);
-    CHECK(ENDLESS_BTN_Y >= CLEAR_PANEL_Y + CLEAR_PANEL_H,
-          "[%s] clear: endless btn top %d overlaps clear panel bottom %d",
-          L, ENDLESS_BTN_Y, CLEAR_PANEL_Y + CLEAR_PANEL_H);
-
-    // ── 引导 overlay（bw=820，内边距 30/边）───────────────────
-    CHECK(px_textWidth(TR(STR_ONBOARD_1), 2) <= 820 - 60,
-          "[%s] onboard1: %dpx overflows box", L, px_textWidth(TR(STR_ONBOARD_1), 2));
-    CHECK(px_textWidth(TR(STR_ONBOARD_2), 2) <= 820 - 60,
-          "[%s] onboard2: %dpx overflows box", L, px_textWidth(TR(STR_ONBOARD_2), 2));
-    CHECK(px_textWidth(TR(STR_ONBOARD_3), 2) <= 820 - 60,
-          "[%s] onboard3: %dpx overflows box", L, px_textWidth(TR(STR_ONBOARD_3), 2));
-    CHECK(px_textWidth(TR(STR_ONBOARD_TAP), 2) <= 820 - 60,
-          "[%s] onboard tap: %dpx overflows box", L, px_textWidth(TR(STR_ONBOARD_TAP), 2));
-
-    // ⚠️ 这里原本还有 drawReadyHint 的断言。v0.4.3 尾单把该函数连同
-    // STR_READY_HINT 一起删了——它在产品里没有调用点（引导 overlay 取代），
-    // 给死代码写断言只会让它看起来"被维护着"。需要轻提示时重新引入即可，
-    // 但底部锚点必须是 BUILD_BAR_Y 而不是 SCREEN_H。
-  }
-  setLang(LANG_EN);                    // 恢复默认，避免影响后续测试
-
-  // ── v0.4.3：缺字防线（渲染完全部界面后 s_cnMissing 必须为 0）────
-  // 上面只查了 STR_x 的宽度；这里查"每个中文字符都有点阵"。
-  // 中文模式下把全部界面真画一遍（含标题——v0.4.2 的缺字bug就在标题）。
+  // ── HUD（全部引用 render.h 的 HUD_* 命名常量，与绘制同源）──
+  // WAVE "250/250" 右缘必须 < NEXT WAVE 按钮左缘（v0.2.1 真机 bug #3 同型）
   {
-    setLang(LANG_CN);
-    s_cnMissing = 0;                   // 清零，只计这一段
-    g_renderOn = true;
-    g_w.state = ST_TITLE; drawTitle(D); tick(1);
-    levelLoad(0); g_w.state = ST_SEL; drawLevelSelect(D); tick(1);
-    levelLoad(0); enterLevel(D, 0); closePanel();
-    tick(2);                                     // 战斗中：HUD/建造栏/按钮
-    g_w.hudDirty = true; renderFrame(D);
-    drawButton(D, true);
-    drawTowerPanel(D, g_w.towers[0]);
-    g_lv = LEVEL_COUNT - 1; g_w.state = ST_CLEAR; drawLevelClear(D); tick(1);
-    g_w.state = ST_GAMEOVER; drawGameOver(D); tick(1);
-    for (int step = 1; step <= 3; ++step) drawOnboard(D, step);
-    CHECK(s_cnMissing == 0,
-          "CN font missing %d glyphs (hardcoded CN string? see i18n.h header note)", s_cnMissing);
-    setLang(LANG_EN);
+    char wb[24]; strcpy(wb, "250/250");
+    CHECK(WNUM_X + px_textWidth(wb, HUD_SCALE) < BTN_X,
+          "hud: WAVE %dpx@%d overlaps button @%d",
+          px_textWidth(wb, HUD_SCALE), WNUM_X, BTN_X);
   }
+  // GOLD 7 位（无尽）右缘 < BEST 起点
+  {
+    char gb[16]; strcpy(gb, "9999999");
+    CHECK(GNUM_X + px_textWidth(gb, HUD_SCALE) < BEST_X,
+          "hud: GOLD 7 digits @%d overlaps BEST @%d", GNUM_X, BEST_X);
+  }
+  // BEST + 3 位数字右缘 < WAVE 标签左缘（旧版 BEST@770 → 数字伸到 813，
+  // 压住 WAVE@800；把 "42" 叠在 "W" 上的那个 bug）
+  CHECK(BEST_X + px_textWidth(TR(STR_BEST), 1) + 6 + px_textWidth("999", 1) < WLBL_X,
+        "hud: BEST block overruns WAVE label @%d", WLBL_X);
+  // "$" 必须完整落在 SIEGE 清空框与 GOLD 擦除框之间（v0.4.2 回归：
+  // 清空框宽 180 铺到 480，把 $ 每帧擦掉）
+  CHECK(SIEGE_X + SIEGE_W <= DOL_X,
+        "hud: SIEGE strip %d..%d erases $ @%d", SIEGE_X, SIEGE_X + SIEGE_W, DOL_X);
+  CHECK(DOL_X + px_textWidth("$", HUD_SCALE) <= GNUM_X - 8,
+        "hud: $ overlaps GOLD erase box");
+  // HP 标签不得伸进 HP 数字擦除框
+  CHECK(HPL_X + px_textWidth(TR(STR_HP), HUD_SCALE) <= HPN_X - HUD_PLATE_PAD,
+        "hud: HP label %dpx@%d overlaps number box",
+        px_textWidth(TR(STR_HP), HUD_SCALE), HPL_X);
+  // HP 数字擦除框右缘 <= SIEGE 条左缘
+  // ⚠️ v0.5.1：这里原来写死 +56，是 tab5 上调出来的经验值。擦除框真实宽度
+  //   是 HUD_HP_ERASE_W（2 位数字 + 两侧 pad），720 上只有 40 —— 用 56 会把
+  //   本来没重叠的布局判成重叠；反过来也别用更小的假值，那就等于没测。
+  CHECK(HPN_X - HUD_PLATE_PAD + HUD_HP_ERASE_W <= SIEGE_X,
+        "hud: HP num box %d..%d overlaps SIEGE strip @%d",
+        HPN_X - HUD_PLATE_PAD, HPN_X - HUD_PLATE_PAD + HUD_HP_ERASE_W, SIEGE_X);
+  // SIEGE 警示条（清空区 SIEGE_X..+SIEGE_W）
+  CHECK(px_textWidth(TR(STR_SIEGE_WARN), 1) <= SIEGE_W,
+        "hud: SIEGE_WARN %dpx overflows strip(%d)",
+        px_textWidth(TR(STR_SIEGE_WARN), 1), SIEGE_W);
+  // NEXT WAVE / FIGHTING 按钮文字（内边距 20）
+  CHECK(px_textWidth(TR(STR_NEXT_WAVE), 2) <= BTN_W - 20,
+        "btn: NEXT_WAVE %dpx overflows", px_textWidth(TR(STR_NEXT_WAVE), 2));
+  CHECK(px_textWidth(TR(STR_FIGHTING), 2) <= BTN_W - 20,
+        "btn: FIGHTING %dpx overflows", px_textWidth(TR(STR_FIGHTING), 2));
+
+  // ── 建造栏 ────────────────────────────────────────────────
+  // 断言改用**绘制侧的真实变量**（SLOT_NSCALE / SLOT_TX / BAR_HINT_X /
+  //   BAR_HINT_SCALE），不再写死 scale=2 与 x+46。
+  for (int i = 0; i < TT_COUNT; ++i) {
+    // 塔名：x + SLOT_TX 起，右缘 < 槽宽 - 26（避让对空角标）
+    CHECK(px_textWidth(TOWER_TYPES[i].disp, SLOT_NSCALE) + SLOT_TX
+              <= SLOT_W - 26,
+          "buildbar: %s name %dpx overflows slot (tx=%d sw=%d)",
+          TOWER_TYPES[i].disp,
+          px_textWidth(TOWER_TYPES[i].disp, SLOT_NSCALE), SLOT_TX, SLOT_W);
+    // 价格 3 位 + "$"：x + SLOT_TX 起，"$"+3 位数字
+    CHECK(SLOT_TX + (FONT_W + 1) * SLOT_NSCALE * 4 <= SLOT_W - 8,
+          "buildbar: price overflows slot (tx=%d sw=%d)", SLOT_TX, SLOT_W);
+    // NEED（金币不足）：x + SLOT_TX 起
+    CHECK(px_textWidth(TR(STR_NEED), 1) + SLOT_TX <= SLOT_W - 8,
+          "buildbar: NEED %dpx overflows slot", px_textWidth(TR(STR_NEED), 1));
+  }
+  // 右侧三行提示：位置/字号同样取绘制侧变量
+  {
+    CHECK(BAR_HINT_X + px_textWidth(TR(STR_TAP_SLOT), BAR_HINT_SCALE) < SCREEN_W,
+          "buildbar: TAP_SLOT hint %dpx offscreen",
+          px_textWidth(TR(STR_TAP_SLOT), BAR_HINT_SCALE));
+    CHECK(BAR_HINT_X + px_textWidth(TR(STR_THEN_MAP), BAR_HINT_SCALE) < SCREEN_W,
+          "buildbar: THEN_MAP hint offscreen");
+    CHECK(BAR_HINT_X + px_textWidth(TR(STR_TAP_TOWER), 1) < SCREEN_W,
+          "buildbar: TAP_TOWER hint offscreen");
+  }
+  // v0.5.1：建造栏右缘不得出屏（槽区 5/6 + 提示列 1/6 必须正好铺满）
+  CHECK(SLOT_X0 + BAR_SLOT_W <= SCREEN_W, "buildbar: slot zone overflows screen");
+
+  // ── 塔面板 ────────────────────────────────────────────────
+  for (int i = 0; i < TT_COUNT; ++i) {
+    // 标题行：塔名(px+PAD) 与 右对齐 "LV3" 之间至少留 20px
+    const int lvW = px_textWidth("LV3", 3);
+    CHECK(PA_LBL1_X + px_textWidth(TOWER_TYPES[i].disp, 3) + 20 + lvW
+              <= PANEL_W - PANEL_PAD,
+          "panel: %s name collides with LV", TOWER_TYPES[i].disp);
+  }
+  // 属性行右缘（PA_VAL2_X 起最多 5 字符 "$9999"/"500MS"）
+  CHECK(PA_VAL2_X + 60 <= PANEL_W - PANEL_PAD, "panel: attr value overflows");
+  // NO ATTACK 行（scale1 最长 22 字符）
+  CHECK(px_textWidth(TR(STR_NO_ATTACK), 1) + PANEL_PAD <= PANEL_W - PANEL_PAD,
+        "panel: NO_ATTACK %dpx overflows", px_textWidth(TR(STR_NO_ATTACK), 1));
+  // 按钮文字（PBTN_W / SELL=PBTN_W-40）
+  CHECK(px_textWidth(TR(STR_UPGRADE), 2) <= PBTN_W - 20,
+        "panel: UPGRADE %dpx overflows", px_textWidth(TR(STR_UPGRADE), 2));
+  CHECK(px_textWidth(TR(STR_NEED_GOLD), 1) <= PBTN_W - 20,
+        "panel: NEED_GOLD %dpx overflows", px_textWidth(TR(STR_NEED_GOLD), 1));
+  CHECK(px_textWidth(TR(STR_SELL), 2) <= (PBTN_W - 40) - 20,
+        "panel: SELL %dpx overflows", px_textWidth(TR(STR_SELL), 2));
+  CHECK(px_textWidth(TR(STR_MAX), 3) <= PBTN_W - 20,
+        "panel: MAX %dpx overflows", px_textWidth(TR(STR_MAX), 3));
+  // "$9999" 价格（4 字符 scale2=48）
+  CHECK(48 <= PBTN_W - 20, "panel: price overflows");
+  // v0.5.1：两个按钮 + 间距必须落在面板内
+  CHECK(PBTN_UP_X + 2 * PBTN_W + 8 <= PANEL_W - PBTN_UP_X,
+        "panel: UP+SELL buttons %dpx overflow panel",
+        PBTN_UP_X + 2 * PBTN_W + 8);
+
+  // ── 选关界面 ──────────────────────────────────────────────
+  CHECK(px_textWidth(TR(STR_SELECT), 4) <= SCREEN_W - 40,
+        "select: title %dpx too wide", px_textWidth(TR(STR_SELECT), 4));
+  CHECK(px_textWidth(TR(STR_UNLOCK_HINT), 2) <= SCREEN_W - 120,
+        "select: unlock hint %dpx too wide", px_textWidth(TR(STR_UNLOCK_HINT), 2));
+  // v0.5.1：**网格整体必须在屏内**。这一条以前根本不存在——
+  //   tab5 的 5×170+4×35=990 直接搬到 720 上，居中后 x0=-135，
+  //   L1/L5/L11/L16 四个节点整个在屏外，玩家永远点不到。
+  //   文字宽度断言（下面那条）在这种 bug 面前是全绿的。
+  CHECK(SEL_GRID_W <= SCREEN_W - 20,
+        "select: node grid %dpx wider than screen %d", SEL_GRID_W, SCREEN_W);
+  CHECK(selNodeX(0) >= 0, "select: grid left edge %d offscreen", selNodeX(0));
+  CHECK(selNodeX(SEL_COLS - 1) + SEL_NODE_W <= SCREEN_W,
+        "select: grid right edge %d offscreen", selNodeX(SEL_COLS - 1) + SEL_NODE_W);
+  // 纵向：标题 → 网格 → 底部提示 → 屏底，三段不得互相压、不得出屏
+  CHECK(selNodeY(0) >= FONT_H * 4 + 16,
+        "select: grid top %d overlaps title", selNodeY(0));
+  CHECK(selNodeY(LEVEL_COUNT - 1) + SEL_NODE_H + 16 + FONT_H * 2 <= SCREEN_H - 8,
+        "select: unlock hint bottom %d offscreen",
+        selNodeY(LEVEL_COUNT - 1) + SEL_NODE_H + 16 + FONT_H * 2);
+  // 节点内部：编号/关卡名/星级三行必须在节点框内
+  CHECK(SEL_NUM_DY + FONT_H * 4 <= SEL_NAME_DY, "select: number overlaps level name");
+  CHECK(SEL_NAME_DY + FONT_H * 1 <= SEL_STAR_DY, "select: level name overlaps stars");
+  CHECK(SEL_STAR_DY + 10 <= SEL_NODE_H, "select: stars %d overflow node %d",
+        SEL_STAR_DY + 10, SEL_NODE_H);
+  for (int i = 0; i < LEVEL_COUNT; ++i) {
+    CHECK(px_textWidth(LEVELS[i].name, 1) <= SEL_NODE_W - 20,
+          "select: L%d name %dpx overflows node", i + 1, px_textWidth(LEVELS[i].name, 1));
+  }
+  // 静音按钮（右下角）不得被网格压住、不得出屏
+  CHECK(MUTE_BTN_X + MUTE_BTN_W <= SCREEN_W - 8, "select: mute btn offscreen");
+  CHECK(MUTE_BTN_Y + MUTE_BTN_H <= SCREEN_H - 8, "select: mute btn offscreen");
+
+  // ── 结算 / 通关（面板 OVER_W 宽，内边距 20）────────────────
+  // v0.5.1：容器宽度从写死的 760/720/740 改为 OVER_W - 40。
+  CHECK(OVER_W <= SCREEN_W - 40, "over: panel %dpx wider than screen", OVER_W);
+  CHECK(px_textWidth(TR(STR_GAME_OVER), 6) <= OVER_W - 40,
+        "over: title %dpx too wide", px_textWidth(TR(STR_GAME_OVER), 6));
+  CHECK(px_textWidth(TR(STR_LEVEL_CLEAR), 6) <= OVER_W - 40,
+        "clear: title %dpx too wide", px_textWidth(TR(STR_LEVEL_CLEAR), 6));
+  CHECK(px_textWidth(TR(STR_TAP_RESTART), 3) <= OVER_W - 40,
+        "over: restart hint %dpx too wide", px_textWidth(TR(STR_TAP_RESTART), 3));
+  CHECK(px_textWidth(TR(STR_TAP_NEXT), 3) <= OVER_W - 40,
+        "clear: next hint %dpx too wide", px_textWidth(TR(STR_TAP_NEXT), 3));
+  CHECK(px_textWidth(TR(STR_ALL_CLEAR), 3) <= OVER_W - 40,
+        "clear: all-clear hint %dpx too wide", px_textWidth(TR(STR_ALL_CLEAR), 3));
+  // BOSS DOWN: + 最长 boss 名（GLASS TITAN 11 字符 scale2=132）
+  {
+    char bb[64]; strcpy(bb, TR(STR_BOSS_DOWN)); strcat(bb, "GLASS TITAN");
+    CHECK(px_textWidth(bb, 2) <= OVER_W - 40,
+          "clear: boss-down line %dpx too wide", px_textWidth(bb, 2));
+  }
+  // KILLS 999 GOLD 9999（scale2）
+  {
+    char bb[64]; strcpy(bb, TR(STR_KILLS)); strcat(bb, "999 ");
+    strcat(bb, TR(STR_GOLD_WORD)); strcat(bb, "9999");
+    CHECK(px_textWidth(bb, 2) <= OVER_W - 40,
+          "clear: kills/gold line %dpx too wide", px_textWidth(bb, 2));
+  }
+  // 无尽入口按钮（ENDLESS_BTN_W=280，内边距 20）
+  CHECK(px_textWidth(TR(STR_ENDLESS), 3) <= ENDLESS_BTN_W - 20,
+        "clear: ENDLESS %dpx overflows btn", px_textWidth(TR(STR_ENDLESS), 3));
+  CHECK(px_textWidth(TR(STR_ENDLESS_DESC), 1) <= ENDLESS_BTN_W - 20,
+        "clear: ENDLESS_DESC %dpx overflows btn", px_textWidth(TR(STR_ENDLESS_DESC), 1));
+  // v0.4.3：按钮的垂直夹缝——上不压通关面板、下不压建造栏槽位。
+  CHECK(ENDLESS_BTN_Y + ENDLESS_BTN_H <= BUILD_BAR_Y,
+        "clear: endless btn bottom %d overlaps build bar top %d",
+        ENDLESS_BTN_Y + ENDLESS_BTN_H, BUILD_BAR_Y);
+  CHECK(ENDLESS_BTN_Y >= CLEAR_PANEL_Y + CLEAR_PANEL_H,
+        "clear: endless btn top %d overlaps clear panel bottom %d",
+        ENDLESS_BTN_Y, CLEAR_PANEL_Y + CLEAR_PANEL_H);
+  // v0.5.1：按钮必须与面板同中轴（x 从 380 改成 (SCREEN_W-W)/2 后锁住）
+  CHECK(ENDLESS_BTN_X + ENDLESS_BTN_W / 2 == SCREEN_W / 2,
+        "clear: endless btn center %d != screen center %d",
+        ENDLESS_BTN_X + ENDLESS_BTN_W / 2, SCREEN_W / 2);
+
+  // ── 引导 overlay（ONBOARD_W 宽，内边距 30/边）──────────────
+  CHECK(ONBOARD_W <= SCREEN_W - 40, "onboard: box %dpx wider than screen", ONBOARD_W);
+  CHECK(px_textWidth(TR(STR_ONBOARD_1), 2) <= ONBOARD_W - 60,
+        "onboard1: %dpx overflows box", px_textWidth(TR(STR_ONBOARD_1), 2));
+  CHECK(px_textWidth(TR(STR_ONBOARD_2), 2) <= ONBOARD_W - 60,
+        "onboard2: %dpx overflows box", px_textWidth(TR(STR_ONBOARD_2), 2));
+  CHECK(px_textWidth(TR(STR_ONBOARD_3), 2) <= ONBOARD_W - 60,
+        "onboard3: %dpx overflows box", px_textWidth(TR(STR_ONBOARD_3), 2));
+  CHECK(px_textWidth(TR(STR_ONBOARD_TAP), 2) <= ONBOARD_W - 60,
+        "onboard tap: %dpx overflows box", px_textWidth(TR(STR_ONBOARD_TAP), 2));
+
+  // ⚠️ 这里原本还有 drawReadyHint 的断言。v0.4.3 尾单把该函数连同
+  // STR_READY_HINT 一起删了——它在产品里没有调用点（引导 overlay 取代）。
 }
+
 
 // ── v0.4.3：全界面截图批处理（中英双语 × 每个界面）────────────────
 // 用法：./sim/sim --shots <outdir>
@@ -581,9 +599,9 @@ static void shotsBatch(const char* dir) {
     for (int i = 0; i < MAX_ENEMIES; ++i) if (g_w.enemies[i].active) drawEnemy(D, g_w.enemies[i]);
   };
 
-  for (int lang = 0; lang < LANG_COUNT; ++lang) {
-    setLang(lang);
-    const char* L = (lang == LANG_CN) ? "cn" : "en";
+  // v0.5.1：语言循环删掉（只有英文一种语言，见 i18n.h 头注）。
+  {
+    const char* L = "en";
 
     // ① 标题界面（drawTitle 自带清屏）
     g_w.state = ST_TITLE;
@@ -654,8 +672,7 @@ static void shotsBatch(const char* dir) {
     }
 
   }
-  setLang(LANG_EN);
-  printf("shots: 2 langs x 11 screens -> %s/{title,select,combat,panel,endless,siege,clear,over,onboard1-3}-{en,cn}.ppm\n", dir);
+  printf("shots: 11 screens -> %s/{title,select,combat,panel,endless,siege,clear,over,onboard1-3}.ppm\n", dir);
 }
 
 int main(int argc, char** argv) {
@@ -707,7 +724,13 @@ int main(int argc, char** argv) {
   dumpPpm("sim_select.ppm");
 
   // 点锁定节点：拒绝；点 L1：进关
-  tapAt(selNodeX(4) + SEL_NODE_W/2, selNodeY(0) + SEL_NODE_H/2);
+  // ⚠️ v0.5.1：原来写成 tapAt(selNodeX(4), selNodeY(0))——X 取 4 号节点、
+  //   Y 取 0 号节点。5 列布局下两者恰好是同一个节点（都在第 0 行），
+  //   所以一直"碰巧是对的"；claw4 改成 4 列后 4 号节点落到第 1 行，
+  //   这个坐标就变成了 L1 的中心 → 断言立刻报"locked level was entered"。
+  //   这类"凑出来的坐标"是同一类老毛病的测试侧版本：写测试的人看到的
+  //   是当前布局的像素结果，而不是"我要点第 5 关"这个意图。
+  tapAt(selNodeX(4) + SEL_NODE_W/2, selNodeY(4) + SEL_NODE_H/2);
   CHECK(g_w.state == ST_SEL, "locked level was entered!");
   tapAt(selNodeX(0) + SEL_NODE_W/2, selNodeY(0) + SEL_NODE_H/2);
   CHECK(g_w.state == ST_READY && g_lv == 0, "tap L1 did not enter level");
@@ -1181,24 +1204,17 @@ int main(int argc, char** argv) {
           "waveSize formula drifted");
   }
 
-  // ── 19. v0.4.2：标题界面（开机第一屏：语言选择 + 点击开始）────────
+  // ── 19. v0.4.2：标题界面（开机第一屏：点击开始）────────────────
+  // v0.5.1：语言按钮的两个断言删掉（按钮随中文支持一起移除）。
+  //   留着的话测的只是"两个已不存在的按钮的命中区"。
   {
     g_w.state = ST_TITLE;
     g_renderOn = true;
-    drawTitle(D); tick(2);                       // 可渲染（星空/标题/按钮全画）
-    setLang(LANG_EN);
-    // 点中文按钮 → 语言切 CN（NVS 由 main 注入，这里只验证状态与重画）
-    tapAt(LANG_CN_X + LANG_BTN_W/2, LANG_BTN_Y + LANG_BTN_H/2);
-    CHECK(langCN(), "CN lang button did not switch language");
-    drawTitle(D); tick(2);                       // 中文标题界面也要能画
-    // 点英文按钮 → 切回 EN
-    tapAt(LANG_EN_X + LANG_BTN_W/2, LANG_BTN_Y + LANG_BTN_H/2);
-    CHECK(!langCN(), "EN lang button did not switch language");
+    drawTitle(D); tick(2);                       // 可渲染（星空/标题/装饰带全画）
     // 点开始（屏幕中央空白处）→ 进选关
-    tapAt(SCREEN_W/2, 640);
+    tapAt(SCREEN_W/2, SCREEN_H - 80);
     CHECK(g_w.state == ST_SEL, "title tap did not enter level select (state=%d)",
           (int)g_w.state);
-    setLang(LANG_EN);
   }
 
   // ── 20. v0.4.2：首次引导三步（NVS onboarded 记住只讲一次）───────
@@ -1314,23 +1330,21 @@ int main(int argc, char** argv) {
     }
   }
 
-  // ── 24. v0.4.2：中文渲染路径（px_text 遇 UTF-8 走 cn_font.h）─────
+  // ── 24. v0.5.1：文本宽度度量（ASCII 单一编码）────────────────
+  // v0.4.2 的中文路径（px_text 遇 UTF-8 走 cn_font.h）随中文支持一起删了。
+  //   这里保留宽度函数的契约测试：px_textWidth 语义 = 总宽减去最后一个
+  //   字间缝，scale1 下 2 字符 = 2×6-1 = 11。
   {
-    setLang(LANG_CN);
     g_renderOn = true;
     levelLoad(0); g_w.gold = 9999; g_w.lives = 20;
-    tick(2); drawHud(D); g_w.hudDirty = false;      // 中文 HUD 全画一遍
+    tick(2); drawHud(D); g_w.hudDirty = false;
     drawButton(D, true);
-    drawLevelSelect(D); tick(2);                    // 中文选关界面
-    // 宽度函数必须认中文：17px/字，ASCII 6px/字(scale1)
-    // （px_textWidth 语义=总宽减去最后一个字间缝——ASCII 侧原有行为，中文一致）
-    CHECK(px_textWidth("中文", 1) == 33, "CN width wrong (%d)", px_textWidth("中文", 1));
+    drawLevelSelect(D); tick(2);
     CHECK(px_textWidth("AB", 1) == 11, "ASCII width wrong (%d)", px_textWidth("AB", 1));
-    CHECK(px_textWidth("中A", 1) == 22, "mixed width wrong (%d)", px_textWidth("中A", 1));
-    setLang(LANG_EN);
+    CHECK(px_textWidth("A", 1) == 5, "single char width wrong (%d)", px_textWidth("A", 1));
   }
 
-  // ── 25. v0.4.3：UI 文字适配（中英双语 × 每元素 × 容器宽度）───────
+  // ── 25. v0.4.3：UI 文字适配（每元素 × 容器宽度）───────────────
   // 动机：v0.4.2 标题界面 LANGUAGE 标签伸进 ENGLISH 按钮 26px（截图才
   // 发现）。新增界面文字必须在这里补容器断言——比"每次人眼看全套截图"
   // 可靠，且 CI 会跑。
