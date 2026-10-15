@@ -680,6 +680,42 @@ static void shotsBatch(const char* dir) {
   printf("shots: 11 screens -> %s/{title,select,combat,panel,endless,siege,clear,over,onboard1-3}.ppm\n", dir);
 }
 
+// ── v0.5.1：按图找可建格 / 逻辑隔离（测试侧通用基建）─────────────────
+// 原来这些测试把建塔列号**写死**成 15/20/25 —— 那是 tab5（32 列）上调出来
+// 的经验坐标。claw4 只有 18 列，20 和 25 直接出界：findTowerAt 返回 -1，
+// 后面 g_w.towers[-1] 就是越界访问。
+//
+// ⚠️ 出界只是恰好被 18 列撞上的那一半，另一半更阴：列号在界内也不代表
+//   那格能建（可能是路径 / 岩层 / 已被占 / SIEGE 封锁区）。所以统一按
+//   当前地图的**真实可建矩阵**找，tab5 与 claw4 都成立，换关卡也不用改。
+static bool findBuildCells(int n, int* cols, int* row) {
+  for (int r = 0; r < MAP_ROWS; ++r) {
+    int got = 0;
+    for (int c = 0; c < COLS; ++c) {
+      if (g_w.path[c][r] || g_w.occupied[c][r] || g_w.blocked[c][r]) continue;
+      if (siegeBlocksPx(c * CELL + CELL / 2.0f, MAP_TOP + r * CELL + CELL / 2.0f)) continue;
+      cols[got++] = c;
+      if (got == n) { *row = r; return true; }
+    }
+  }
+  return false;
+}
+
+// 只保留 idx 这一座塔在场，其余全部停用。
+// 原测试靠"三座塔隔 5 列"做**空间隔离**（GAT@15 / LASER@20 / CANNON@25）——
+// 18 列地图上挤不下 11 列跨度。改成逻辑隔离后位置随便选，而且比空间隔离
+// 更严：空间隔离只保证"在射程外"，逻辑隔离连冷却 / 溅射的串扰也排除。
+// 原测试本来就在干这件事（"⚠️ 隔离 LASER"），这里只是把它从特例变成规则。
+// ⚠️ 必须**先激活 idx 自己**：前面的测试段已经把它停用过了，而本函数
+//   只管"停用别人"，不管"复活自己" —— 于是第二段的 LASER 一路是
+//   active=false，l2 恒为 0，报出来的却是"激光被盾减半了"这种假象。
+//   （这个坑是我把原测试的 `towers[li].active = true` 换成 isolateTower
+//   时踩的：原写法那个赋值同时兼任"归位"，换函数名时语义丢了。）
+static void isolateTower(int idx) {
+  if (idx >= 0 && idx < MAX_TOWERS) g_w.towers[idx].active = true;
+  for (int i = 0; i < MAX_TOWERS; ++i)
+    if (i != idx && g_w.towers[i].active) g_w.towers[i].active = false;
+}
 int main(int argc, char** argv) {
   // v0.4.2 难度数据化扫描：./sim/sim --x2scan
   // L14-L20 给 bot 双倍起手金币重跑（不漏怪判据），回答 ROADMAP 第一条：
@@ -894,7 +930,17 @@ int main(int argc, char** argv) {
     if (idx>=0) {
       int shots = 0; float hp = g_w.enemies[idx].hp; const int dmg=12;
       while (hp > 0) { hp -= dmg; ++shots; }
-      CHECK(shots >= 7, "L1 grunt dies in %d shots (expect >=7)", shots);
+      // v0.5.1：期望值必须**按当前 profile 算**，不能写死 7 发。
+      //   它守的意图是"grunt 得耐打、不能一两枪倒"——守的是**击杀枪数
+      //   这个比例**，不是绝对血量。而 claw4 的 PTD_DIFF_SCALE 会等比
+      //   降低敌人血量（那是刻意配平，见 layout.py 的 diff_scale 注释），
+      //   85×0.82 → 70 血 → 6 发。写死 7 会让"配平生效了"被判成失败。
+      //   所以期望值从数据表推（基准血量 × 当前难度 / 机枪伤害），
+      //   tab5 自动得到 8、claw4 自动得到 6，两边都对。
+      const int expect = (int)((float)HP_BASE * ENEMY_KINDS[0].hp_scale
+                               * PTD_DIFF_SCALE / (float)dmg);
+      CHECK(shots >= expect, "L1 grunt dies in %d shots (expect >=%d "
+            "@ DIFF_SCALE=%.2f)", shots, expect, (double)PTD_DIFF_SCALE);
       printf("grunt maxHp=%.0f -> %d GAT shots to kill\n", g_w.enemies[idx].maxHp, shots);
     }
   }
@@ -960,8 +1006,8 @@ int main(int argc, char** argv) {
       // CAN（溅射）拿它没办法：把加农放它头顶，掉血必须为 0
       levelLoad(3); g_w.gold=9999; g_w.lives=99999;
       int cc=-1, cr=-1;
-      for (int c=0;c<COLS && cc<0;++c) for (int r=0;r<MAP_ROWS;++r)
-        if (!g_w.path[c][r] && !g_w.occupied[c][r] && !g_w.blocked[c][r]) { cc=c; cr=r; break; }
+      { int tmp[1] = {0}; if (findBuildCells(1, tmp, &cr)) cc = tmp[0]; }
+      CHECK(cc>=0, "no buildable cell for anti-air test");
       buildTower(cc,cr,1);                                  // CAN at (cc,cr)
       g_w.wave = AIR_FROM_WAVE - 1; startNextWave(); tick(5);
       int ch=-1; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active && g_w.enemies[i].kind==K_CHOPPER){ch=i;break;}
@@ -977,8 +1023,7 @@ int main(int argc, char** argv) {
               "CANNON hurt a chopper (%.0f -> %.0f)", hp0, g_w.enemies[ch].hp);
         // GAT 必须能打到天：另找一块草地建机枪，把直升机挪到它头上 → 掉血
         int gc=-1, gr2=-1;
-        for (int c=0;c<COLS && gc<0;++c) for (int r=0;r<MAP_ROWS;++r)
-          if (!g_w.path[c][r] && !g_w.occupied[c][r] && !g_w.blocked[c][r]) { gc=c; gr2=r; break; }
+        { int tmp[1] = {0}; if (findBuildCells(1, tmp, &gr2)) gc = tmp[0]; }
         CHECK(gc>=0, "no grass for GAT anti-air test");
         buildTower(gc,gr2,0);                              // GAT (cost 60)
         g_w.enemies[ch].x = gc*CELL+CELL/2;
@@ -992,27 +1037,30 @@ int main(int argc, char** argv) {
 
   // ── 11. v0.3.0：能量塔产金 + 激光瞬击 ────────────────────────────
   {
-    levelLoad(0); g_w.gold = 300;                          // ENERGY=80
-    CHECK(buildTower(15,6,3), "energy tower not built");
-    int ei = findTowerAt(15,6); CHECK(ei>=0,"energy idx");
+    levelLoad(0);
+    int ec[1] = {0}, erow = -1;
+    CHECK(findBuildCells(1, ec, &erow), "no buildable cell on L1");
+    g_w.gold = 300;                                        // ENERGY=80
+    CHECK(buildTower(ec[0],erow,3), "energy tower not built");
+    int ei = findTowerAt(ec[0],erow); CHECK(ei>=0,"energy idx");
     int g0 = g_w.gold; tick(130);                        // 4.3s ≥ 一个 4000ms 脉冲
     CHECK(g_w.gold >= g0 + TOWER_TYPES[3].damage, "energy pulse paid nothing (%d->%d)", g0, (int)g_w.gold);
     // 能量塔不攻击：场上放一只怪，它不该掉血（energy 射程=0）
-    levelLoad(0); g_w.gold = 999; buildTower(15,6,3);
+    levelLoad(0); g_w.gold = 999; buildTower(ec[0],erow,3);
     startNextWave(); tick(20);
     int eidx=-1; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active){eidx=i;break;}
     CHECK(eidx>=0,"energy test: no enemy");
     if (eidx>=0) { float hp=g_w.enemies[eidx].hp;
-      g_w.enemies[eidx].x=15*CELL+20; tick(60);
+      g_w.enemies[eidx].x=ec[0]*CELL+20; tick(60);
       CHECK(!g_w.enemies[eidx].active || g_w.enemies[eidx].hp==hp, "ENERGY tower dealt damage!"); }
     // 激光：瞬击无子弹——开火帧敌人立刻掉血，且弹池全空
-    levelLoad(0); g_w.gold=999; buildTower(15,6,4);      // LASER=140
-    int li=findTowerAt(15,6); CHECK(li>=0,"laser idx");
+    levelLoad(0); g_w.gold=999; buildTower(ec[0],erow,4);   // LASER=140
+    int li=findTowerAt(ec[0],erow); CHECK(li>=0,"laser idx");
     startNextWave(); tick(20);
     int tidx=-1; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active){tidx=i;break;}
     CHECK(tidx>=0,"laser test: no enemy");
     if (tidx>=0) {
-      g_w.enemies[tidx].x=15*CELL+CELL/2; g_w.enemies[tidx].y=MAP_TOP+6*CELL+CELL/2;
+      g_w.enemies[tidx].x=ec[0]*CELL+CELL/2; g_w.enemies[tidx].y=MAP_TOP+erow*CELL+CELL/2;
       float hp0=g_w.enemies[tidx].hp; int bulletsBefore=0;
       for (int i=0;i<MAX_BULLETS;++i) if (g_w.bullets[i].active) ++bulletsBefore;
       tick(4);                                            // 一帧内应瞬击命中（无飞行时间）
@@ -1097,9 +1145,12 @@ int main(int argc, char** argv) {
     if (si>=0) CHECK(g_w.enemies[si].shield, "SHIELD not flagged");
 
     // 定量：同位置机枪直击减半、激光全伤（用固定靶，绕开走位噪声）
-    levelLoad(0); g_w.gold=999;
-    buildTower(15,6,0); int gi=findTowerAt(15,6);
-    buildTower(20,6,4); int li=findTowerAt(20,6);       // LASER 备着
+    levelLoad(0);
+    int bc[3] = {0,0,0}, brow = -1;
+    CHECK(findBuildCells(3, bc, &brow), "no 3 buildable cells on L1");
+    g_w.gold=999;
+    buildTower(bc[0],brow,0); int gi=findTowerAt(bc[0],brow);
+    buildTower(bc[1],brow,4); int li=findTowerAt(bc[1],brow);   // LASER 备着
     startNextWave(); tick(15);
     int e=-1; for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active){e=i;break;}
     CHECK(e>=0,"shield test: no enemy");
@@ -1107,24 +1158,24 @@ int main(int argc, char** argv) {
       g_w.enemies[e].shield=true;
       g_w.enemies[e].armor=0;
       g_w.enemies[e].maxHp=100000; g_w.enemies[e].hp=100000;   // 固定靶不许死
-      g_w.towers[li].active=false;                               // ⚠️ 隔离 LASER(45全伤)
-      g_w.enemies[e].x=15*CELL+CELL/2; g_w.enemies[e].y=MAP_TOP+6*CELL+CELL/2;
+      isolateTower(gi);                                          // 只留 GAT
+      g_w.enemies[e].x=bc[0]*CELL+CELL/2; g_w.enemies[e].y=MAP_TOP+brow*CELL+CELL/2;
       float hp0=g_w.enemies[e].hp; tick(14);                    // 462ms→GAT≤2发
       float lost=hp0-g_w.enemies[e].hp;
       CHECK(lost>0 && lost<=13, "shield bullet halving broken: %.0f (expect 6)", lost);
       // 激光打盾：不减半（LV1 LASER dmg45 全伤）
-      g_w.towers[li].active=true;                             // LASER 归位
+      isolateTower(li);                                        // 只留 LASER
       g_w.enemies[e].hp = 100000; hp0=100000;
-      g_w.enemies[e].x=20*CELL+CELL/2; g_w.enemies[e].y=MAP_TOP+6*CELL+CELL/2;
+      g_w.enemies[e].x=bc[1]*CELL+CELL/2; g_w.enemies[e].y=MAP_TOP+brow*CELL+CELL/2;
       g_w.towers[li].cooldownMs=0; tick(3);
       float l2=hp0-g_w.enemies[e].hp;
       CHECK(l2>=45, "LASER halved by shield: %.0f (expect 45)", l2);
       // 溅射无视盾：加农落点全覆盖→全额34（splashDamage 不看 shield）
-      buildTower(25,6,1);                                        // CAN $100? gold 兜底
-      g_w.gold=9999; buildTower(25,6,1);
-      int ci=findTowerAt(25,6); CHECK(ci>=0,"can build for splash test");
+      g_w.gold=9999; buildTower(bc[2],brow,1);
+      int ci=findTowerAt(bc[2],brow); CHECK(ci>=0,"can build for splash test");
+      isolateTower(ci);                                        // 只留 CAN
       g_w.enemies[e].hp=100000; hp0=100000;
-      g_w.enemies[e].x=25*CELL+CELL/2; g_w.enemies[e].y=MAP_TOP+6*CELL+CELL/2;
+      g_w.enemies[e].x=bc[2]*CELL+CELL/2; g_w.enemies[e].y=MAP_TOP+brow*CELL+CELL/2;
       g_w.towers[ci].cooldownMs=0; tick(6);                  // 炮弹飞一小段+溅射
       float l3=hp0-g_w.enemies[e].hp;
       CHECK(l3>=34, "splash halved by shield: %.0f (expect >=34)", l3);

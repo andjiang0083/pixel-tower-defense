@@ -178,10 +178,17 @@ static int16_t  g_endBest = 0;
 static inline const LevelDef& LV(void) { return LEVELS[g_lv]; }
 // ── v0.4：无尽模式下 waves/diff 不再是常量——一切难度读数走这两个 helper ──
 static inline int lvWaves(void) { return g_w.endless ? ENDLESS_WAVES : LV().waves; }
+// v0.5.1：乘上 profile 级的 PTD_DIFF_SCALE（config_gen.h，见 layout.py 的
+// PROFILES[*].diff_scale）。tab5 上是 1.00，行为与改动前逐位相同。
+// ⚠️ 这个缩放是**关卡配平旋钮**，不是"作弊开关"：claw4 的地图从 32 列
+//   缩到 18 列，路径也等比缩短了，而敌人的 hp / 数量 / 波数一个都没动
+//   ⇒ 同一只怪被塔瞄准的时间只剩一半，难度凭空翻倍。
+//   design_range 缩的是塔的射程，解决的是"屏幕窄 → 塔相对变强"；
+//   这个系数解决的是"路径短 → 塔输出窗口变小"。两者互不覆盖。
 static inline float lvDiff(void) {
-  if (!g_w.endless) return LV().diff;
+  if (!g_w.endless) return LV().diff * PTD_DIFF_SCALE;
   const int round = g_w.wave / ENDLESS_ROUND_WAVES;      // 每10波一轮
-  return LV().diff * (1.0f + ENDLESS_DIFF_PCT / 100.0f * round);
+  return LV().diff * (1.0f + ENDLESS_DIFF_PCT / 100.0f * round) * PTD_DIFF_SCALE;
 }
 // v0.4：本波该出什么王——mid-boss（半程）/真 BOSS（末波）。无尽：每5波mini、每轮末真王
 struct BossPlan { uint8_t real; uint8_t mini; };           // real=真王只数, mini=mini王只数

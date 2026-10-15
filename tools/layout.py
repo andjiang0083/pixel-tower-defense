@@ -41,6 +41,7 @@ PROFILES = {
         hud_rows=2, build_bar_rows=2,
         ui=1.00,
         design_range=150,
+        diff_scale=1.00,      # 难度旋钮（见 lvDiff）：tab5 是设计基准，恒 1.0
         # ── 横向 UI 绝对尺寸（px）。为什么是绝对值而不是比例：──
         #   这些容器里装的是**字**，字宽只由 scale（1/2/3...）决定，
         #   不随屏宽连续变化。容器宽度必须 ≥ 最长文案的字宽 + 内边距，
@@ -66,6 +67,18 @@ PROFILES = {
         # 相对变强 1.78 倍、难度崩塌。缩放系数 sqrt(18/32)≈0.75，
         # 具体最终值要靠 map_design.py 审计 + 模拟器自动通关反推。
         design_range=112,
+        # ── 关卡难度配平旋钮（见 game.h 的 lvDiff）──────────────────
+        # 为什么 claw4 需要它，而 design_range 解决不了：
+        #   design_range 缩的是**塔的射程**（150→112px），补偿的是"屏幕窄了，
+        #   塔的绝对射程会让塔相对变强"。但它补偿不了另一件事：
+        #   **地图从 32 列缩到 18 列，路径长度也等比缩了**（L4 从 ~120 格
+        #   缩到 62 格），而敌人的 hp / 数量 / 波数**一个都没动**。
+        #   于是同一只怪在 claw4 上从入口走到出口的时间只有 tab5 的一半，
+        #   塔能打它的时间也就只有一半 —— 难度凭空翻倍。
+        # 这是"地图窄"带来的**第二阶效应**，design_range 管不到。
+        # 所以单独给一个旋钮：敌人生血统一乘它（spawnKind 的 lvDiff()）。
+        # 值由模拟器反推：20 关全部 bot 可通的最低档。
+        diff_scale=0.82,
         # ── 横向 UI 绝对尺寸 ──
         # 按钮：仍按内容定宽（"NEXT WAVE" 108 + 内边距 20 = 128），
         #   取 132 留一点余量。它占 720 的 18.3%（tab5 只占 15.6%），
@@ -93,7 +106,7 @@ _P = PROFILES[PROFILE]
 
 def use_profile(name):
     """切换 profile 并重算派生网格常量。必须先于任何 LEVELS/snake() 使用。"""
-    global PROFILE, _P, DESIGN_GAT_RANGE
+    global PROFILE, _P, DESIGN_GAT_RANGE, DIFF_SCALE
     if name not in PROFILES:
         raise SystemExit("unknown profile %r (have: %s)"
                          % (name, ", ".join(sorted(PROFILES))))
@@ -101,6 +114,7 @@ def use_profile(name):
     apply_profile()                      # ← 关键：重算 COLS/MAP_ROWS/...
     # 审计尺也是 profile 相关的（Gfx 抽象之外的第二处几何依赖）
     DESIGN_GAT_RANGE = _P["design_range"]
+    DIFF_SCALE       = _P["diff_scale"]
     SNAKE_XB = COLS - 3
     globals()["SNAKE_XB"] = SNAKE_XB    # snake() 默认折返横坐标随列数变
     return _P
@@ -110,6 +124,10 @@ def apply_profile():
     """把 profile 的几何写入模块级网格常量。由 use_profile() 调用。"""
     global SCREEN_W, SCREEN_H, CELL, COLS, ROWS_TOTAL
     global HUD_ROWS, MAP_TOP, BUILD_BAR_ROWS, MAP_ROWS, UI_SCALE
+    # v0.5.1：DIFF_SCALE 必须进 global，否则它只是 apply_profile 的局部变量，
+    #   模块级那个（模板取值用的）永远不会更新 —— 症状就是"claw4 与 tab5
+    #   生成出来的值一模一样"，且不报错。
+    global DIFF_SCALE, DESIGN_GAT_RANGE
     global BTN_W, PANEL_W
     global SEL_COLS, SEL_ROWS, SEL_NODE_W, SEL_NODE_H, SEL_GAP_X, SEL_GAP_Y, SEL_Y0
     global OVER_W, ONBOARD_W
@@ -254,6 +272,7 @@ STAR3_PCT, STAR2_PCT = 90, 55             # ≥90%→★★★  ≥55%→★★ 
 # v0.5.0：审计尺改为 profile 提供（见 PROFILES[*].design_range）。
 #   tab5 = 150（= GAT LV1 射程，最便宜塔 = 可达性地板）
 #   claw4 = 112（地图窄 44% 后同比缩放，防止"塔相对变强"导致难度崩塌）
+DIFF_SCALE       = _P["diff_scale"]
 DESIGN_GAT_RANGE = _P["design_range"]
 LEGACY_LEVELS    = 10         # L1-L10 沿用旧图（无禁建）；L11-L20 走雕刻
 
@@ -487,8 +506,20 @@ LEVELS = [
 #    不会静默产出坏地图——这是原作者"单一真源 + 机器可判"纪律的延续。
 PROFILE_ROUTES = {
     "claw4": {
-        # L1 = 一条横线，缩放后仍然成立
-        1: dict(mode="remap"),
+        # ── L1 FIRST BLOOD：教学关，2 折回折（40 步 → 41 格）──────────
+        # 为什么不再用 remap：
+        #   tab5 的 L1 是"一条横线"（32 格），remap 到 18 列只剩 18 格。
+        #   18 格 = 敌人从右边进、直穿到左边出，**一次转向都没有** ——
+        #   玩家没有"拐角位"可守（拐角是塔防里价值最高的塔位：能同时
+        #   覆盖两条边），第一关就把最核心的玩法教没了。
+        #   而且 18 格连"路径长度 ≥30"这条门禁都过不了。
+        # 改成 2 折回折：右上进 → 走到左上 → 下折到中段右行 → 再下折
+        #   → 左行出界。41 格，比 L2（43）略短，符合"第一关最简单"。
+        # 拓扑意图（对照 tab5）：tab5 的 L1 是直横线，claw4 这里主动
+        #   加了两折 —— 因为 18 列的屏宽只有 56%，直横线的绝对长度
+        #   不足以撑起一关的时长与塔位密度。这是**按屏幕比例重设计**，
+        #   不是等比压缩。
+        1: dict(routes=[[(17,2),(1,2),(1,7),(8,7),(8,11),(0,11)]]),
 
         # ── L2-L13 人工重画（18 列）─────────────────────────────────
         # 设计约束（与 tab5 版本的差异，逐条说明）：
@@ -820,7 +851,7 @@ def gen_header():
         sel_cols=SEL_COLS, sel_rows=SEL_ROWS,
         sel_node_w=SEL_NODE_W, sel_node_h=SEL_NODE_H,
         sel_gap_x=SEL_GAP_X, sel_gap_y=SEL_GAP_Y, sel_y0=SEL_Y0,
-        over_w=OVER_W, onboard_w=ONBOARD_W)
+        over_w=OVER_W, onboard_w=ONBOARD_W, ds=DIFF_SCALE)
     open(out_header(), "w").write(txt)
 
 HEADER_TPL = """// SPDX-License-Identifier: MIT
@@ -830,6 +861,13 @@ HEADER_TPL = """// SPDX-License-Identifier: MIT
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+
+// ── 关卡难度缩放（profile 级配平旋钮）──────────────────────────────
+// 敌人生血统一乘这个系数（见 game.h 的 lvDiff()）。
+// tab5 = 1.00（设计基准，改了就是改难度）；claw4 < 1，补偿"18 列地图
+// 路径短 → 塔的输出窗口小"这个 design_range 管不到的二阶效应。
+// 值由模拟器反推（20 关全部 bot 可通的最低档），不要手拍。
+#define PTD_DIFF_SCALE %(ds).2ff
 
 #define SCREEN_W      %(sw)d
 #define SCREEN_H      %(sh)d

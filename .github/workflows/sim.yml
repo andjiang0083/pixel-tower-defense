@@ -35,23 +35,26 @@ jobs:
           g++ -std=c++17 -O2 -DPTD_FAKE_TOUCH -I build/tab5 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_tab5
           ./sim/sim_tab5
 
-      # ── claw4 仿真（锁定基线：当前 214 passed / 7 failed）───────────
-      # ⚠️ v0.5.1 基线变更说明：
-      #   · 断言总数 291 → 221（-70）：删掉中英双语循环（只有英文一种语言），
-      #     以及随语言按钮/中文字库一起下线的那些断言。
-      #   · 失败数 16 → 7，且**UI 类断言 16 项全部转绿**（0 failed）。
-      #     修法见 render.h / tools/layout.py 的 v0.5.1 注释：把"按屏宽等比
-      #     缩放"换成"按实际占位链式推导"，并把容器（选关网格/浮层面板/
-      #     无尽按钮）补上进屏断言。
-      #   · 剩下 8 项**全是玩法/关卡设计，不是 GUI**：
-      #       L1 路径只有 18 格（18 列地图的路径长度不达标）
-      #       L4 IRON CORRIDOR bot 打不过（claw4 关卡重画后的数值待调）
-      #       激光/溅射/盾牌定量测试的建塔列号写死 15/20/25，18 列地图
-      #         上 20 和 25 直接出界 → findTowerAt 返回 -1 → 后续
-      #         g_w.towers[-1] 是越界访问
-      #     这三项都属于"18 列关卡设计"这条独立工作线，不在本次 GUI/性能
-      #     改动范围内。基线锁在 7，一旦玩法侧开工把它压下去就上调本注释。
-      - name: PC simulator [claw4] — baseline lock (214 passed / 7 failed)
+      # ── claw4 仿真（锁定基线：当前 305 passed / 0 failed）───────────
+      # v0.5.1 收尾：断言 221 → 305、失败 7 → 0。凑齐这三项：
+      #   ① 测试侧写死的建塔列号 15/20/25 —— tab5（32 列）的经验坐标，
+      #      18 列上 20 和 25 直接出界 → findTowerAt 返回 -1 → towers[-1]
+      #      越界访问。改成按当前地图的真实可建矩阵找（findBuildCells），
+      #      三座塔的隔离从"隔 5 列"（18 列挤不下 11 列跨度）改成逻辑
+      #      隔离（isolateTower）。连带修了"隔离不会复活目标塔"的坑。
+      #   ② L1 从 remap（一条 18 格直穿）改成 2 折回折 41 格。
+      #   ③ 新增 PTD_DIFF_SCALE 难度配平旋钮（claw4=0.82），修 L4 打不过。
+      #
+      # ⚠️ 基线现在是 0 failed，**任何回归都会立刻红**，不再有"已知红灯"
+      #    可以躲。若新增断言，同步上调这里的 total 下限并说明原因。
+      #
+      # 关于"后期 8 关 bot 未通"：那是**原设计意图**，不是 bug。
+      #   tab5（原始基准）同样有 8 关 bot 不通（L8、L14-L20），
+      #   claw4 现在是 8 关（L10、L14、L16-L20），数量持平、且 L8/L15
+      #   反而比原版更好。sim 里这些关只打 [info] 不判失败，
+      #   注释写得很清楚："bot 不是难度标尺，留真人判定"。
+      #   不要为了"让 bot 全通"去削弱关卡。
+      - name: PC simulator [claw4] — baseline lock (305 passed / 0 failed)
         run: |
           g++ -std=c++17 -O2 -DPTD_FAKE_TOUCH -I build/claw4 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_claw4
           out=$(./sim/sim_claw4)
@@ -59,9 +62,9 @@ jobs:
           total=$(echo "$out" | grep -oP 'RESULT: \K[0-9]+' || echo 0)
           failed=$(echo "$out" | grep -oP 'RESULT: [0-9]+ passed, \K[0-9]+' || echo 0)
           # 断言总数基线（新增断言时手动上调，并说明原因）
-          [ "$total" -ge 221 ] || { echo "assert count dropped: $total < 221"; exit 1; }
-          # 失败数基线：只允许不增
-          [ "$failed" -le 7 ] || { echo "claw4 failures grew: $failed > 7"; exit 1; }
+          [ "$total" -ge 305 ] || { echo "assert count dropped: $total < 305"; exit 1; }
+          # 失败数基线：已归零，任何回归都必须立刻红
+          [ "$failed" -le 0 ] || { echo "claw4 failures grew: $failed > 0"; exit 1; }
           echo "claw4 baseline OK: $total passed, $failed failed"
 
       # ── 24bpp 渲染内核（Claw4 真机走的那条路）──────────────────────

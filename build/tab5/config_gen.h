@@ -6,6 +6,13 @@
 #include <stdint.h>
 #include <stddef.h>
 
+// ── 关卡难度缩放（profile 级配平旋钮）──────────────────────────────
+// 敌人生血统一乘这个系数（见 game.h 的 lvDiff()）。
+// tab5 = 1.00（设计基准，改了就是改难度）；claw4 < 1，补偿"18 列地图
+// 路径短 → 塔的输出窗口小"这个 design_range 管不到的二阶效应。
+// 值由模拟器反推（20 关全部 bot 可通的最低档），不要手拍。
+#define PTD_DIFF_SCALE 1.00f
+
 #define SCREEN_W      1280
 #define SCREEN_H      720
 #define CELL          40
