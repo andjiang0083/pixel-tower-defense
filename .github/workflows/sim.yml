@@ -35,11 +35,11 @@ jobs:
           g++ -std=c++17 -O2 -DPTD_FAKE_TOUCH -I build/tab5 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_tab5
           ./sim/sim_tab5
 
-      # ── claw4 仿真（锁定基线：当前 213 passed / 8 failed）───────────
+      # ── claw4 仿真（锁定基线：当前 214 passed / 7 failed）───────────
       # ⚠️ v0.5.1 基线变更说明：
       #   · 断言总数 291 → 221（-70）：删掉中英双语循环（只有英文一种语言），
       #     以及随语言按钮/中文字库一起下线的那些断言。
-      #   · 失败数 16 → 8，且**UI 类断言 16 项全部转绿**（0 failed）。
+      #   · 失败数 16 → 7，且**UI 类断言 16 项全部转绿**（0 failed）。
       #     修法见 render.h / tools/layout.py 的 v0.5.1 注释：把"按屏宽等比
       #     缩放"换成"按实际占位链式推导"，并把容器（选关网格/浮层面板/
       #     无尽按钮）补上进屏断言。
@@ -50,8 +50,8 @@ jobs:
       #         上 20 和 25 直接出界 → findTowerAt 返回 -1 → 后续
       #         g_w.towers[-1] 是越界访问
       #     这三项都属于"18 列关卡设计"这条独立工作线，不在本次 GUI/性能
-      #     改动范围内。基线锁在 8，一旦玩法侧开工把它压下去就上调本注释。
-      - name: PC simulator [claw4] — baseline lock (213 passed / 8 failed)
+      #     改动范围内。基线锁在 7，一旦玩法侧开工把它压下去就上调本注释。
+      - name: PC simulator [claw4] — baseline lock (214 passed / 7 failed)
         run: |
           g++ -std=c++17 -O2 -DPTD_FAKE_TOUCH -I build/claw4 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_claw4
           out=$(./sim/sim_claw4)
@@ -61,7 +61,7 @@ jobs:
           # 断言总数基线（新增断言时手动上调，并说明原因）
           [ "$total" -ge 221 ] || { echo "assert count dropped: $total < 221"; exit 1; }
           # 失败数基线：只允许不增
-          [ "$failed" -le 8 ] || { echo "claw4 failures grew: $failed > 8"; exit 1; }
+          [ "$failed" -le 7 ] || { echo "claw4 failures grew: $failed > 7"; exit 1; }
           echo "claw4 baseline OK: $total passed, $failed failed"
 
       # ── 单一真源纪律：改生成器必须重新生成，且生成结果必须入库 ──────
