@@ -111,8 +111,40 @@ static const char* const STR_CN[STR_COUNT] = {
 // ── 运行时选择 ─────────────────────────────────────────────────────
 static uint8_t g_lang = LANG_EN;
 static inline void setLang(uint8_t l) { g_lang = (l < LANG_COUNT) ? l : LANG_EN; }
-static inline bool langCN(void) { return g_lang == LANG_CN; }
+
+// ── v0.5.0（Claw4 移植）：窄屏自动降级为英文 ───────────────────────
+// 病根：中文走cn_font.h 的 **16x16 固定字形**（px_text.h: CN_ADV = 17px/字），
+//   且中文**不随 scale 缩小**（CN_FONT_H 固定 16）。于是 4 个汉字 = 68px 起，
+//   在 Claw4 的 116px 建造栏槽位 / 202px 塔面板里必然溢出——模拟器实测
+//   53 项断言失败，全部是"overflows slot / overflows panel / overflows strip"。
+//
+// 为什么在这里解决而不是到处改：TR() 是界面文本的**唯一入口**（原作者注释
+//   明说"界面唯一入口"）。在这里按屏宽降级，一处生效、全局一致，
+//   且**不动 i18n.h 的任何文案表**——双语内容一字不丢，只是窄屏不显示。
+//
+//阈值怎么定的：中文最短的实用标签是 2 字（"生命"/"金币"）= 34px，
+//   加上槽内图标占位 40px 与边距，槽宽需 >= 108px。1280 屏槽宽 210、
+//   720 屏槽宽 116 —— 用 150 做阈值把两种屏明确分开，
+//   介于其间的屏宽（如 1080p 手机横屏）也走英文，不会半途崩。
+#define I18N_CN_MIN_SLOT_W 150
+static inline bool cnRenderable(void) {
+#if defined(SCREEN_W)
+  return (SCREEN_W >= I18N_CN_MIN_SLOT_W);
+#else
+  return true;
+#endif
+}
+
+static inline bool langCN(void) {
+  // langCN() 的语义是"当前**渲染**中文"，不只是"用户选了中文"。
+  // 标题界面的语言切换按钮仍用 g_lang 判断（见 render.h drawTitle），
+  // 所以用户在窄屏上选中文仍然被记住，回到宽屏依然生效。
+  return g_lang == LANG_CN && cnRenderable();
+}
+// 用户当前选择的语言（无视屏宽）——语言按钮用它，不用 langCN()
+static inline bool langPickedCN(void) { return g_lang == LANG_CN; }
+
 // 取当前语言文本（界面唯一入口）
 static inline const char* TR(StrId id) {
-  return (g_lang == LANG_CN) ? STR_CN[id] : STR_EN[id];
+  return langCN() ? STR_CN[id] : STR_EN[id];
 }

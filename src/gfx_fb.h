@@ -48,8 +48,14 @@ class GfxFb : public Gfx {
   // 统计：验证"局部重绘"确实生效（每帧填了多少像素）。sim 的
   // checkLocalRedraw 断言在用——如果哪天有人改成全屏 fillScreen，
   // 这个计数器会先报警。
-  static uint64_t pxFilled;
-  static int frames;
+  //
+  // v0.5.0：改成 **inline 变量**（C++17）。原先的定义放在 sim/gfx_fake.h，
+  // 那是 PC 侧的"单一定义点"；真机固件编译同一份 gfx_fb.h 时没有那个文件，
+  // 于是链接期报 undefined reference to `GfxFb::pxFilled`。
+  // inline 变量由 C++ 保证"一个定义、多处可见"，两个平台都不需要额外 .cpp，
+  // 也不用谁去记得补定义——这正是 header-only 项目想要的。
+  static inline uint64_t pxFilled = 0;
+  static inline int frames   = 0;
 
   // 自管内存（PC 侧典型用法）
   GfxFb() : fb_((uint16_t*)PTD_GFX_ALLOC((size_t)SCREEN_W * SCREEN_H * 2)),

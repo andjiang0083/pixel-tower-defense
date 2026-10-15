@@ -801,23 +801,53 @@ static const Waypoint ALL_WP[] = { %(wp)s };
 #define MAX_BULLETS   %(mb)d
 #define MAX_FX        %(mf)d
 
-#define BTN_X 1064
-#define BTN_Y 8
-#define BTN_W 200
-#define BTN_H 64
+// ── v0.5.0：UI 几何按 SCREEN_W 自适应（不再写死 1280 基准的绝对值）──
+//⚠️ 病根：这段 UI 几何原本是 8 个裸数字（BTN_X=1064 / SLOT_W=200 ...），
+//   隐含前提是"屏宽 1280"。换屏就崩——claw4 的 720 宽下
+//   5×SLOT_W=1000+间隙 1048 > 720，建造栏提示全部跑到屏外（模拟器报
+//   "[EN] buildbar: TAP_SLOT hint 94px offscreen"）；
+//   BTN_X=1064 > 720，NEXT WAVE 按钮整个在屏外。
+//
+//   修法：所有横向几何锚在右缘（SCREEN_W - w - margin）或按比例（pct/1000），
+//   纵向按 MAP_TOP / BUILD_BAR_H 居中。这样换 profile 时不需要再改这里，
+//   也不会出现"漏改了某个硬编码"的沉默回归——布局的每一处都可见地依赖 SCREEN_W。
+
+// NEXT WAVE 按钮：宽 = 屏宽 × 15.625%%（1280 → 200），锚右缘
+#define BTN_W        ((SCREEN_W * 15625) / 100000)
+#define BTN_X        (SCREEN_W - BTN_W - 12)
+#define BTN_H        (MAP_TOP - 16)
+#define BTN_Y        8
 
 #define BUILD_BAR_Y   (SCREEN_H - BUILD_BAR_H)
-// v0.3.0：5 塔种 → 槽加宽排满屏幕，右侧留提示列
-#define SLOT_W        200
-#define SLOT_H        72
-#define SLOT_GAP      8
-#define SLOT_X0       16
+// v0.5.0：槽区 = 屏宽 5/6，右侧 1/6 留给操作提示（见 render.h 的 BAR_HINT_X）。
+//   ⚠️ v0.4.x 的 SLOT_W=200×5 + 间隙 32 + X0 16 = 1048px，在 1280 屏上
+//   "排满屏幕、右侧留提示列"（原作者注释原话），但作者没在断言里锁这个账——
+//   换到 720 宽就溢出（模拟器报 "TAP_SLOT hint 94px offscreen"）。
+//   现在按屏宽分区，任何宽度都不溢出。
+//
+//⚠️ 槽位几何的真源在这里而不是 render.h：渲染层（render.h 的 drawBuildBar）
+//   与命中判定层（touch.h 的 hitSlot）都要用，而 touch.h 不能 include
+//   render.h（render.h → game.h → touch.h 会形成循环依赖）。
+//   v0.4.x 的槽位几何因此被复制成两份（config_gen.h 一份、render.h 又按
+//   slotX() 自己算一份），改一处必漏另一处——正是 v0.4.3 注释里记的那类 bug。
+//   现在单一真源在 config_gen.h，两侧都从这里取。
+#define SLOT_X0       8
+#define SLOT_GAP      4
+#define SLOT_H        (BUILD_BAR_H - 8)
+#define BAR_SLOT_W    ((SCREEN_W * 5) / 6)          // 槽区总宽
+#define SLOT_W        ((BAR_SLOT_W - 4 * SLOT_GAP) / 5)   // 单槽宽
+#define BAR_HINT_X    (SLOT_X0 + BAR_SLOT_W)        // 提示列左缘
+#define BAR_HINT_W    (SCREEN_W - BAR_HINT_X - 6)
+#define BAR_HINT_SCALE (BAR_HINT_W >= 100 ? 2 : 1)  // 提示字号（窄列用 1）
+#define SLOT_NSCALE   (SLOT_W >= 180 ? 2 : 1)       // 塔名字号（窄槽用 1）
+#define SLOT_TX       40                            // 槽内文字起始 x（图标右侧）
 
-#define PANEL_W       360
-#define PANEL_H       248
-#define PBTN_UP_X     16
-#define PBTN_UP_Y     150
-#define PBTN_W        164
+// 塔面板：宽 = 屏宽 × 28.125%%（1280 → 360），高 = 地图区高 × 36.6%%
+#define PANEL_W       ((SCREEN_W * 28125) / 100000)
+#define PANEL_H       ((MAP_TOP + MAP_ROWS*CELL) * 366) / 1000
+#define PBTN_UP_X     12
+#define PBTN_UP_Y     (PANEL_H / 2 - 36)
+#define PBTN_W        ((PANEL_W - 32) / 2)
 #define PBTN_H        72
 
 #define START_GOLD      %(gold)d

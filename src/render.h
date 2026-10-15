@@ -76,31 +76,73 @@ static void drawCellBase(Gfx* g, int col, int row) {
   g->fillRect(x, y, 1, CELL, C_GRASS_EDGE);          // 网格线（竖）
 }
 
-// ── HUD 横向布局（v0.4.3：从散落的硬编码 x 收敛为命名常量）────────
+// ── HUD 横向布局（v0.4.3 从散落的硬编码 x 收敛为命名常量）────────
 // 起因：三处硬编码 x 互相踩雷——
 //   ① SIEGE 警示条的清空框 fillRect(300,14,180,..) 覆盖到 480，把静态 HUD 的
-//      "$"(x=420) 每帧擦掉：v0.4.2 起金币符号在真机与仿真里都消失（K金变没有）。
-//   ② 无尽模式的 BEST 数字从 770 起画、伸到 ~813，压住 WAVE 标签(x=800)——
+//      "$"(x=420) 每帧擦掉：v0.4.2 起金币符号在真机与仿真里都消失（金币变没有）。
+//   ② 无尽模式的 BEST 数字从 770 起画、伸到~813，压住 WAVE 标签(x=800)——
 //      截图放大可见 "42" 叠在 "W" 上。
 //   ③ 静态标签原本在 drawBackground 与射程框重画两处复制，改一处必漏一处。
-// 现在：布局是命名常量（仿真断言引用同一批宏），标签只有一个绘制函数。
-#define HUD_HEART_X     16      // ♥ 心跳图标
-#define HUD_HP_LBL_X    52      // "生命" / "HP"
-#define HUD_HP_NUM_X    204     // 生命数字（擦除框 196..260）
-#define HUD_SIEGE_X     300     // SIEGE 警示条：HP 数字与 $ 之间
-#define HUD_SIEGE_W     112     // 放得下 "BUILD ZONE LOCKED"(101px)；右缘 412 < $ (420)
-#define HUD_DOLLAR_X    420     // "$" 金币符号
-#define HUD_GOLD_NUM_X  500     // 金币数字（擦除框 492..626）
-#define HUD_BEST_X      640     // 无尽 BEST（GOLD 框 626 之后、WAVE 标签 800 之前）
-#define HUD_WAVE_LBL_X  800     // "波次" / "WAVE"
-#define HUD_WAVE_NUM_X  900     // 波次数字（擦除框 896..1030）
+//
+// ── v0.5.0（Claw4 移植）：改成「按屏宽比例 + 从右往左锚定」─────────────
+// 原实现是一串从左往右累加的绝对 x（16/52/204/300/420/500/640/800/900），
+// 整串的隐含前提是"屏宽 1280"。换到 720x720 的方形屏后：WAVE 标签(800) 与
+// NEXT WAVE 按钮(BTN_X=1064) 直接跑到屏外/互相重叠——模拟器实测
+//   "HUD WAVE plate overlaps NEXT WAVE button: 176px"
+//   "[EN] buildbar: TAP_SLOT hint 94px offscreen"
+// 这类失败的病根是同一个：布局不是"相对"的，写死了一个宽度的假设。
+//
+// v0.5.0 的做法：**右侧元素（波次/按钮）锚右缘，左侧元素锚左缘**，
+// 全部间距用 UI_S（= SCREEN_W/1280）缩放。这样换屏只是缩放，不会重排。
+#define UI_S   (SCREEN_W / 1280.0f)               // UI缩放基准：1280 宽 = 1.0
+#define HUD_Y  ((MAP_TOP - FONT_H * 3) / 2)       // 标签纵向基线（HUD 垂直居中）
+
+// ── 左段（锚左缘）：♥ HP 数字 SIEGE 警示条 $ 金币数字 ──────────────
+#define HPA_X   (12 * UI_S)                // ♥ 心跳图标
+#define HPL_X   (46 * UI_S)                       // "生命"/"HP" 标签
+#define HPN_X   (150 * UI_S)                      // 生命数字
+#define SIEGE_X (238 * UI_S)                      // SIEGE 警示条起点
+#define SIEGE_W (110 * UI_S)                      // 放得下 "BUILD ZONE LOCKED"
+#define DOL_X   (352 * UI_S)                      // "$" 金币符号
+#define GNUM_X  (400 * UI_S)                      // 金币数字
+
+// ── 右段：从 BTN_X（按钮左缘）往左链式排布───────────────────────────
+// ⚠️ 这一段曾经反复踩"算出来刚好、实际擦除框伸进按钮"的坑（v0.2.1 真机
+//   bug #3「按钮左缘被刷黑」同型：模拟器实测 174px 与 176px 两次）。
+//   根因是**间距按"文本宽度"算，而每帧铺过去的是擦除框**——擦除框比文本宽
+//   ((FONT_W+1)*HUD_SCALE*7+8)，差值随字号放大。
+//
+// v0.5.0 的修法：右侧链**从按钮左缘往左倒推**，每个元素的位置由前一个的
+//   实际占位算出，而不是各自独立地"离按钮 X 像素"。新增元素或改字号时，
+//   整条链自动重排，不可能再重叠。
+#define FONT_ADV(scale)  ((FONT_W + 1) * (scale))
+#define HUD_PLATE_PAD    8                // 擦除框左右各留8px
+#define HUD_NUM_W(scale) (FONT_ADV(scale) * 7 + 2 * HUD_PLATE_PAD)  // "250/250"
+
+#if SCREEN_W >= 1024
+  #define HUD_SCALE 3
+#else
+  // 窄屏（720）：按钮占右侧 112px，字号降到 2 给波次区腾空间
+  #define HUD_SCALE 2
+#endif
+
+// 波次数字：擦除框右缘恰好贴住 BTN_X
+#define WNUM_X (BTN_X + HUD_PLATE_PAD - HUD_NUM_W(HUD_SCALE))
+// WAVE 标签：在波次数字左侧留一个缝
+#define WLBL_X (WNUM_X - FONT_ADV(HUD_SCALE) * 4 - HUD_PLATE_PAD)
+// 无尽 BEST：紧贴 WAVE 标签左侧。块宽 = 标签 + 6 + 数字(3字)，再留8px 缝。
+//   英文标签 "BEST" = 4×6 = 24px；**中文"最高" = 2×17 = 34px**——中文 16x16
+//   字形固定宽、不随 scale 缩放，所以这里的余量必须按中文算，
+//   否则中文模式下 "42" 会叠在 "W" 上（英文模式看不出来）。
+//   34 + 6 + 17 + 8 = 65。
+#define BEST_X (WLBL_X - 65)
 
 // HUD 静态标签（♥ / HP / $ / WAVE）——只画一次，两处重画共用同一份
 static void drawHudLabels(Gfx* g) {
-  px_char(g, HUD_HEART_X, 24, '\x01', C_BAD, 4);                 // ♥
-  px_text(g, HUD_HP_LBL_X, 20, TR(STR_HP),     C_TEXT_DIM, 3);
-  px_text(g, HUD_DOLLAR_X, 20, "$",            C_GOLD,     3);
-  px_text(g, HUD_WAVE_LBL_X, 20, TR(STR_WAVE), C_TEXT_DIM, 3);
+  px_char(g, HPA_X, HUD_Y + 4, '\x01', C_BAD, 4);
+  px_text(g, HPL_X, HUD_Y, TR(STR_HP),     C_TEXT_DIM, HUD_SCALE);
+  px_text(g, DOL_X, HUD_Y, "$",            C_GOLD,     HUD_SCALE);
+  px_text(g, WLBL_X, HUD_Y, TR(STR_WAVE), C_TEXT_DIM, HUD_SCALE);
 }
 
 // ── 静态背景：整张地图 + HUD 底板，只在开局 / 重开时画一次 ────────
@@ -144,6 +186,24 @@ static inline uint16_t towerColor(int type) {
   }
 }
 
+// ── 建造栏横向布局（v0.5.0）────────────────────────────────────────
+// v0.4.x 的假设：5 个 200px 槽 + 间隙 32 + X0 16 = 1048px，"排满屏幕、
+// 右侧留提示列"（原作者注释原话）。1280 屏上剩232px 放提示，刚好。
+// 720 屏上槽位自己就溢出了——模拟器实测：
+//   "[EN] buildbar: TAP_SLOT hint 94px offscreen"
+//   "[CN] buildbar: TAP_SLOT hint 49px offscreen"
+//
+// v0.5.0：把建造栏切成**两区**，比例固定，与屏宽无关：
+//   · 槽区 = 屏宽 × 5/6（5 个槽等分）→ BAR_SLOT_W / SLOT_W
+//   · 提示区 = 屏宽 × 1/6（右侧一列，三行提示）→ BAR_HINT_X / BAR_HINT_SCALE
+// 这样任何屏宽下都不会溢出，且提示永远有地方放。
+//
+// ⚠️ 几何真源在 config_gen.h（tools/layout.py），不在这里。原因是渲染层
+//   （drawBuildBar）与命中判定层（touch.h 的 hitSlot）都要用同一份槽位几何，
+//   而 touch.h 不能 include render.h（render.h → game.h → touch.h 循环）。
+//   v0.4.x 的槽位几何被复制成两份（config_gen.h 的 SLOT_W 一份、render.h
+//   的 slotX() 自己再算一份），改一处必漏另一处——v0.4.3 注释里记的正是
+//   这类 bug。现在只有一份。
 static inline int slotX(int i) { return SLOT_X0 + i * (SLOT_W + SLOT_GAP); }
 
 static void drawBuildBar(Gfx* g) {
@@ -153,14 +213,15 @@ static void drawBuildBar(Gfx* g) {
     const bool afford   = (g_w.gold >= T.cost);
     const bool selected = (g_w.buildSel == i || (g_w.buildSel < 0 && i == 0));
     const uint16_t col  = afford ? towerColor(i) : C_TEXT_DIM;
+    const int sw = SLOT_W;
 
-    g->fillRect(x, y, SLOT_W, SLOT_H, C_SLOT_BG);
+    g->fillRect(x, y, sw, SLOT_H, C_SLOT_BG);
     // 选中框：金色双线（未选中只留一条暗边）
-    g->drawRect(x, y, SLOT_W, SLOT_H, selected ? C_SLOT_SEL : C_GRASS_EDGE);
-    if (selected) g->drawRect(x + 2, y + 2, SLOT_W - 4, SLOT_H - 4, C_SLOT_SEL);
+    g->drawRect(x, y, sw, SLOT_H, selected ? C_SLOT_SEL : C_GRASS_EDGE);
+    if (selected) g->drawRect(x + 2, y + 2, sw - 4, SLOT_H - 4, C_SLOT_SEL);
 
     // 塔种图标：用缩小的塔外观（基座+塔身），保持与地图上的塔同形
-    const int ix = x + 10, iy = y + 16;
+    const int ix = x + 6, iy = y + 16;
     g->fillRect(ix, iy + 4, 28, 26, C_TOWER_BASE);
     g->fillRect(ix + 4, iy, 20, 26, col);
     if (i == 1)      g->fillRect(ix + 20, iy + 8, 14, 6, col);      // 加农：粗炮管
@@ -176,65 +237,85 @@ static void drawBuildBar(Gfx* g) {
       g->fillRect(ix + 12, iy - 14, 4, 8, C_LASER_BEAM);       // 光束尖
     } else             g->fillRect(ix + 12, iy - 8, 6, 30, col);        // 机枪：细枪管
 
-    px_text(g, x + 46, y + 10, T.disp, afford ? C_TEXT : C_TEXT_DIM, 2);
+    // 塔名 + 价格。v0.5.0：字号由 SLOT_NSCALE 决定（窄槽用 scale=1），
+    // 原来写死 scale=2 时"ENERGY"（70px）在 136px 槽里放不下。
+    const int nscale = SLOT_NSCALE;
+    px_text(g, x + SLOT_TX, y + (nscale == 2 ? 10 : 14), T.disp,
+            afford ? C_TEXT : C_TEXT_DIM, nscale);
     char buf[16]; px_itoa(T.cost, buf);
-    g->fillRect(x + 46, y + 38, 90, FONT_H * 2 + 4, C_SLOT_BG);
-    px_text(g, x + 46, y + 38, "$", afford ? C_GOLD : C_TEXT_DIM, 2);
-    px_text(g, x + 64, y + 38, buf, afford ? C_GOLD : C_TEXT_DIM, 2);
-    if (!afford) px_text(g, x + 46, y + 52, TR(STR_NEED), C_BAD, 1);
+    g->fillRect(x + SLOT_TX, y + 34, sw - 46, FONT_H * nscale + 4, C_SLOT_BG);
+    px_text(g, x + SLOT_TX, y + 34, "$", afford ? C_GOLD : C_TEXT_DIM, nscale);
+    px_text(g, x + SLOT_TX + (FONT_W + 1) * nscale, y + 34, buf,
+            afford ? C_GOLD : C_TEXT_DIM, nscale);
+    if (!afford) px_text(g, x + SLOT_TX, y + 54, TR(STR_NEED), C_BAD, 1);
     // v0.3.0 对空角标：能打天的塔右上角一个小白飞机（决策一眼可读）
     if (TOWER_AIR_OK[i]) {
-      const int ax = x + SLOT_W - 26, ay = y + 6;
+      const int ax = x + sw - 26, ay = y + 6;
       g->fillRect(ax, ay + 3, 18, 4, C_TEXT);
       g->fillRect(ax + 6, ay, 5, 10, C_TEXT);
     }
   }
 
   // 建造栏右侧操作提示（常驻，替代旧的浮动 hint）
-  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 14, TR(STR_TAP_SLOT), C_TEXT_DIM, 2);
-  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 34, TR(STR_THEN_MAP), C_TEXT_DIM, 2);
-  px_text(g, slotX(TT_COUNT) + 8, BUILD_BAR_Y + 54, TR(STR_TAP_TOWER), C_TEXT_DIM, 1);
+  // v0.5.0：位置/字号由 BAR_HINT_* 决定，原代码写死 slotX(TT_COUNT)+8 与
+  // scale=2，在 120px 的提示列里放不下"94px 宽 + 边距"，于是出屏。
+  const int hy = BUILD_BAR_Y + (BAR_HINT_SCALE == 2 ? 14 : 20);
+  px_text(g, BAR_HINT_X, hy, TR(STR_TAP_SLOT), C_TEXT_DIM, BAR_HINT_SCALE);
+  px_text(g, BAR_HINT_X, hy + FONT_H * BAR_HINT_SCALE + 6,
+          TR(STR_THEN_MAP), C_TEXT_DIM, BAR_HINT_SCALE);
+  px_text(g, BAR_HINT_X, hy + (FONT_H * BAR_HINT_SCALE + 6) * 2,
+          TR(STR_TAP_TOWER), C_TEXT_DIM, 1);
 }
 
 // ── HUD 数字（只在数值变化时调用）────────────────────────────────
 // v0.4.1：三个擦除框一律按"最长可能内容"配宽并留余量——
 //   HP 两位数字宽 36px 但旧框只有 35px：生命 10→9 时旧数字右缘 6px
-//   擦不掉，留一道旧 '0' 残边（v0.4.1 修）。
+//   擦不掉，留一道旧'0' 残边（v0.4.1 修）。
 //   GOLD 按 7 位配（无尽模式金币会超 5 位）；WAVE 按 "250/250"（7 字）
 //   配并把文本左移，右缘仍必须 < BTN_X——伸进 NEXT WAVE 按钮区会重演
 //   v0.2.1 真机 bug #3（按钮左缘被刷成黑底）。
+//
+// v0.5.0：擦除框的 y/高 与字号统一改用 HUD_Y / HUD_SCALE。原来写死 14/20/26
+// 与 scale=3，那是"MAP_TOP=80 + scale=3"的组合值；窄屏改HUD_SCALE=2 后
+// 若不同步，擦除框会盖不住字（或把相邻元素擦掉）。
+#define HUD_ERASE_Y   (HUD_Y - 4)
+#define HUD_ERASE_H   (FONT_H * HUD_SCALE + 8)
 static void drawHud(Gfx* g) {
   char buf[16];
 
   // HP：数字前留心跳图标位
-  g->fillRect(HUD_HP_NUM_X - 8, 14, 64, FONT_H * 3 + 6, C_UI_BG);
+  g->fillRect(HPN_X - 8, HUD_ERASE_Y, 64 * UI_S, HUD_ERASE_H, C_UI_BG);
   px_itoa(g_w.lives, buf);
-  px_text(g, HUD_HP_NUM_X, 20, buf, g_w.lives <= 5 ? C_HP_LOW : C_TEXT, 3);
+  px_text(g, HPN_X, HUD_Y, buf, g_w.lives <= 5 ? C_HP_LOW : C_TEXT, HUD_SCALE);
 
   // GOLD
-  g->fillRect(HUD_GOLD_NUM_X - 8, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
+  g->fillRect(GNUM_X - 8, HUD_ERASE_Y,
+              (FONT_W + 1) * HUD_SCALE * 7 + 8, HUD_ERASE_H, C_UI_BG);
   px_itoa(g_w.gold, buf);
-  px_text(g, HUD_GOLD_NUM_X, 20, buf, C_GOLD, 3);
+  px_text(g, GNUM_X, HUD_Y, buf, C_GOLD, HUD_SCALE);
 
   // v0.4.2：无尽模式显示历史最高波次（NVS 持久）
-  // v0.4.3：x 从 770 移到 HUD_BEST_X(640)——旧位置让数字伸到 ~813，
-  // 压住静态的 WAVE 标签(800)，截图里 "42" 叠在 "W" 上。
+  // v0.4.3：x 从 770 移到 BEST_X——旧位置让数字伸到 ~813，
+  // 压住静态的 WAVE 标签，截图里 "42" 叠在 "W" 上。
   if (g_w.endless) {
-    px_text(g, HUD_BEST_X, 26, TR(STR_BEST), C_TEXT_DIM, 1);
+    px_text(g, BEST_X, HUD_Y + 6, TR(STR_BEST), C_TEXT_DIM, 1);
     px_itoa(g_endBest, buf);
-    px_text(g, HUD_BEST_X + px_textWidth(TR(STR_BEST), 1) + 6, 26, buf, C_STAR, 1);
+    px_text(g, BEST_X + px_textWidth(TR(STR_BEST), 1) + 6, HUD_Y + 6, buf,
+            C_STAR, 1);
   }
 
   // WAVE x/N（本关总波数一目了然；无尽模式总波数走 lvWaves()=250）
-  g->fillRect(HUD_WAVE_NUM_X - 4, 14, (FONT_W + 1) * 3 * 7 + 8, FONT_H * 3 + 6, C_UI_BG);
+  g->fillRect(WNUM_X - 4, HUD_ERASE_Y,
+              (FONT_W + 1) * HUD_SCALE * 7 + 8, HUD_ERASE_H, C_UI_BG);
   char wbuf[24]; px_itoa(g_w.wave, wbuf);
   strcat(wbuf, "/"); char tbuf[8]; px_itoa(lvWaves(), tbuf); strcat(wbuf, tbuf);
-  px_text(g, HUD_WAVE_NUM_X, 20, wbuf, C_TEXT, 3);
+  px_text(g, WNUM_X, HUD_Y, wbuf, C_TEXT, HUD_SCALE);
 
   // v0.4.2：SIEGE 警示条（HP 与 $ 之间的空档；常态清空，封锁中画红字）
-  // v0.4.3：宽度 180→HUD_SIEGE_W(112)。旧框铺到 480，把静态 "$"(420) 擦了。
-  g->fillRect(HUD_SIEGE_X, 14, HUD_SIEGE_W, FONT_H * 3 + 6, C_UI_BG);
-  if (g_w.siegeMs > 0) px_text(g, HUD_SIEGE_X, 26, TR(STR_SIEGE_WARN), C_BAD, 1);
+  // v0.4.3：宽度 180→SIEGE_W(112)。旧框铺到 480，把静态 "$" 擦了。
+  g->fillRect(SIEGE_X, HUD_ERASE_Y, SIEGE_W, HUD_ERASE_H, C_UI_BG);
+  if (g_w.siegeMs > 0)
+    px_text(g, SIEGE_X, HUD_Y + 6, TR(STR_SIEGE_WARN), C_BAD, 1);
 }
 
 // ── NEXT WAVE 按钮（v0.2.1：波间变倒计时条）───────────────────────

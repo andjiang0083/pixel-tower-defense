@@ -373,38 +373,38 @@ static void checkUiTextFit(void) {
     // WAVE "250/250" 右缘必须 < NEXT WAVE 按钮左缘（v0.2.1 真机 bug #3 同型）
     {
       char wb[24]; strcpy(wb, "250/250");
-      CHECK(HUD_WAVE_NUM_X + px_textWidth(wb, 3) < BTN_X,
+      CHECK(WNUM_X + px_textWidth(wb, HUD_SCALE) < BTN_X,
             "[%s] hud: WAVE %dpx@%d overlaps button @%d",
-            L, px_textWidth(wb, 3), HUD_WAVE_NUM_X, BTN_X);
+            L, px_textWidth(wb, HUD_SCALE), WNUM_X, BTN_X);
     }
     // GOLD 7 位（无尽）右缘 < BEST 起点
     {
       char gb[16]; strcpy(gb, "9999999");
-      CHECK(HUD_GOLD_NUM_X + px_textWidth(gb, 3) < HUD_BEST_X,
+      CHECK(GNUM_X + px_textWidth(gb, HUD_SCALE) < BEST_X,
             "[%s] hud: GOLD 7 digits overlaps BEST", L);
     }
     // BEST + 3 位数字右缘 < WAVE 标签左缘（旧版 BEST@770 → 数字伸到 813，
     // 压住 WAVE@800；把 "42" 叠在 "W" 上的那个 bug）
-    CHECK(HUD_BEST_X + px_textWidth(TR(STR_BEST), 1) + 6 + px_textWidth("999", 1) < HUD_WAVE_LBL_X,
-          "[%s] hud: BEST block overruns WAVE label @%d", L, HUD_WAVE_LBL_X);
+    CHECK(BEST_X + px_textWidth(TR(STR_BEST), 1) + 6 + px_textWidth("999", 1) < WLBL_X,
+          "[%s] hud: BEST block overruns WAVE label @%d", L, WLBL_X);
     // "$" 必须完整落在 SIEGE 清空框与 GOLD 擦除框之间（v0.4.2 回归：
     // 清空框宽 180 铺到 480，把 $ 每帧擦掉）
-    CHECK(HUD_SIEGE_X + HUD_SIEGE_W <= HUD_DOLLAR_X,
+    CHECK(SIEGE_X + SIEGE_W <= DOL_X,
           "[%s] hud: SIEGE strip %d..%d erases $ @%d",
-          L, HUD_SIEGE_X, HUD_SIEGE_X + HUD_SIEGE_W, HUD_DOLLAR_X);
-    CHECK(HUD_DOLLAR_X + px_textWidth("$", 3) <= HUD_GOLD_NUM_X - 8,
+          L, SIEGE_X, SIEGE_X + SIEGE_W, DOL_X);
+    CHECK(DOL_X + px_textWidth("$", HUD_SCALE) <= GNUM_X - 8,
           "[%s] hud: $ overlaps GOLD erase box", L);
     // HP 标签不得伸进 HP 数字擦除框
-    CHECK(HUD_HP_LBL_X + px_textWidth(TR(STR_HP), 3) <= HUD_HP_NUM_X - 8,
+    CHECK(HPL_X + px_textWidth(TR(STR_HP), 3) <= HPN_X - 8,
           "[%s] hud: HP label %dpx@%d overlaps number box",
-          L, px_textWidth(TR(STR_HP), 3), HUD_HP_LBL_X);
+          L, px_textWidth(TR(STR_HP), 3), HPL_X);
     // HP 数字擦除框右缘 < SIEGE 条左缘
-    CHECK(HUD_HP_NUM_X + 56 <= HUD_SIEGE_X,
+    CHECK(HPN_X + 56 <= SIEGE_X,
           "[%s] hud: HP num box overlaps SIEGE strip", L);
-    // SIEGE 警示条（清空区 HUD_SIEGE_X..+HUD_SIEGE_W）
-    CHECK(px_textWidth(TR(STR_SIEGE_WARN), 1) <= HUD_SIEGE_W,
+    // SIEGE 警示条（清空区 SIEGE_X..+SIEGE_W）
+    CHECK(px_textWidth(TR(STR_SIEGE_WARN), 1) <= SIEGE_W,
           "[%s] hud: SIEGE_WARN %dpx overflows strip(%d)",
-          L, px_textWidth(TR(STR_SIEGE_WARN), 1), HUD_SIEGE_W);
+          L, px_textWidth(TR(STR_SIEGE_WARN), 1), SIEGE_W);
     // NEXT WAVE / FIGHTING 按钮文字（内边距 20）
     CHECK(px_textWidth(TR(STR_NEXT_WAVE), 2) <= BTN_W - 20,
           "[%s] btn: NEXT_WAVE %dpx overflows", L, px_textWidth(TR(STR_NEXT_WAVE), 2));
@@ -412,25 +412,37 @@ static void checkUiTextFit(void) {
           "[%s] btn: FIGHTING %dpx overflows", L, px_textWidth(TR(STR_FIGHTING), 2));
 
     // ── 建造栏 ────────────────────────────────────────────────
+    // v0.5.0：断言全部改用**绘制侧的真实变量**（SLOT_NSCALE / SLOT_TX /
+    //   BAR_HINT_X / BAR_HINT_SCALE），不再写死 scale=2 与 x+46。
+    //   原写法隐含"槽宽≥180、字号=2"的假设，720 宽下槽宽 116 → 断言测的是
+    //   一个绘制侧根本不画的字号，属于"断言与实现脱节"——正是 v0.4.3 注释里
+    //   记的那类 bug（"改一处必漏一处"）。
     for (int i = 0; i < TT_COUNT; ++i) {
-      // 塔名（x+46 起）右缘 < 槽宽 - 30（避让对空角标 SLOT_W-26）
-      CHECK(px_textWidth(TOWER_TYPES[i].disp, 2) + 46 <= SLOT_W - 30,
-            "[%s] buildbar: %s name %dpx overflows slot", L, TOWER_TYPES[i].disp,
-            px_textWidth(TOWER_TYPES[i].disp, 2));
-      // 价格 3 位 + "$"：x+64 起 36px < 槽宽
-      CHECK(64 + 36 <= SLOT_W - 20, "[%s] buildbar: price overflows slot", L);
-      // NEED（金币不足）：x+46 起
-      CHECK(px_textWidth(TR(STR_NEED), 1) + 46 <= SLOT_W - 20,
-            "[%s] buildbar: NEED %dpx overflows slot", L, px_textWidth(TR(STR_NEED), 1));
+      // 塔名：x + SLOT_TX 起，右缘 < 槽宽 - 26（避让对空角标）
+      CHECK(px_textWidth(TOWER_TYPES[i].disp, SLOT_NSCALE) + SLOT_TX
+                <= SLOT_W - 26,
+            "[%s] buildbar: %s name %dpx overflows slot (tx=%d sw=%d)",
+            L, TOWER_TYPES[i].disp,
+            px_textWidth(TOWER_TYPES[i].disp, SLOT_NSCALE), SLOT_TX, SLOT_W);
+      // 价格 3 位 + "$"：x + SLOT_TX 起，"$"+3 位数字
+      CHECK(SLOT_TX + (FONT_W + 1) * SLOT_NSCALE * 4 <= SLOT_W - 8,
+            "[%s] buildbar: price overflows slot (tx=%d sw=%d)",
+            L, SLOT_TX, SLOT_W);
+      // NEED（金币不足）：x + SLOT_TX 起
+      CHECK(px_textWidth(TR(STR_NEED), 1) + SLOT_TX <= SLOT_W - 8,
+            "[%s] buildbar: NEED %dpx overflows slot", L,
+            px_textWidth(TR(STR_NEED), 1));
     }
-    // 右侧三行提示：slotX(TT_COUNT)+8 起，右缘 < 屏宽
+    // 右侧三行提示：位置/字号同样取绘制侧变量
     {
-      const int x = slotX(TT_COUNT) + 8;
-      CHECK(x + px_textWidth(TR(STR_TAP_SLOT), 2) < SCREEN_W,
-            "[%s] buildbar: TAP_SLOT hint %dpx offscreen", L, px_textWidth(TR(STR_TAP_SLOT), 2));
-      CHECK(x + px_textWidth(TR(STR_THEN_MAP), 2) < SCREEN_W,
+      CHECK(BAR_HINT_X + px_textWidth(TR(STR_TAP_SLOT), BAR_HINT_SCALE)
+                < SCREEN_W,
+            "[%s] buildbar: TAP_SLOT hint %dpx offscreen", L,
+            px_textWidth(TR(STR_TAP_SLOT), BAR_HINT_SCALE));
+      CHECK(BAR_HINT_X + px_textWidth(TR(STR_THEN_MAP), BAR_HINT_SCALE)
+                < SCREEN_W,
             "[%s] buildbar: THEN_MAP hint offscreen", L);
-      CHECK(x + px_textWidth(TR(STR_TAP_TOWER), 1) < SCREEN_W,
+      CHECK(BAR_HINT_X + px_textWidth(TR(STR_TAP_TOWER), 1) < SCREEN_W,
             "[%s] buildbar: TAP_TOWER hint offscreen", L);
     }
 
@@ -868,14 +880,18 @@ int main(int argc, char** argv) {
         if (D->fb()[y*SCREEN_W+x]==C_UI_BG && x<BAR_X) ++black;  // 按钮左缘被刷黑
     CHECK(black==0, "HUD WAVE plate overlaps NEXT WAVE button: %d px", black);
     // 底板右缘必须留在按钮之前
-    CHECK(956 + (FONT_W+1)*3*5 + 8 <= BTN_X, "WAVE plate too wide");
+    //v0.5.0：956→WNUM_X-4（旧值把 tab5 的 1280 宽坐标写死在断言里，
+    //   换 profile 后这个断言测的是一个不存在的位置）
+    CHECK(WNUM_X - 4 + (FONT_W+1)*HUD_SCALE*5 + 8 <= BTN_X, "WAVE plate too wide");
     // HUD 静态标签在擦除后仍在（框伸进 HUD 带的场景）
     levelLoad(0); g_w.gold=9999; buildTower(15,0,0);
     int ti=findTowerAt(15,0); while (upgradeTower(ti)) {}
     g_w.selectedTower=ti; tick(2);                        // 第一行塔：框伸进 HUD
     g_w.selectedTower=-1; tick(3);                        // 关面板 → eraseRangeBox
     int tagLost=0;
-    for (int x=800;x<860;++x) if (D->fb()[24*SCREEN_W+x]==C_TEXT_DIM) ++tagLost;
+    // v0.5.0：800..860 → WLBL_X 起 60px（旧值同样写死 1280 基准）
+    for (int i=0;i<60;++i)
+      if (D->fb()[HUD_Y*(int)SCREEN_W + (int)WLBL_X + i] == C_TEXT_DIM) ++tagLost;
     CHECK(tagLost>10, "HUD WAVE label erased by range-box cleanup: %d px", tagLost);
   }
 

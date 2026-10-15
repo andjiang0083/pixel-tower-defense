@@ -11,7 +11,21 @@
 //    读这条**：否则新 TU 会各带一份静默副本，状态分裂且无链接报错。
 //    要拆多文件，先把这些 static 搬进唯一的 game.cpp 再谈。
 #pragma once
-#include <Arduino.h>      // millis()
+// millis()：唯一需要的 Arduino 设施。
+// v0.5.0（Claw4 移植）：改为条件包含——Arduino 侧走 Arduino.h，
+// 其他平台（ESP-IDF / PC 仿真）由各自的 shim 提供同一个 millis()。
+//   · ESP-IDF 侧：main/bsp_claw4.h 声明 millis()，实现是 esp_timer_get_time()
+//   · PC 仿真侧：sim/compat/Arduino.h 里的 g_simMs 递增版
+// 逻辑层对"时间从哪来"零感知，这是原作者"游戏逻辑不碰硬件"的直接延伸。
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  // 非 Arduino 平台由 BSP 提供 millis()。声明放在这里会让每个 TU 都看到它，
+  // 好处是 game.h 自包含；代价是 BSP 的定义必须匹配签名(uint32_t(void))。
+  // ESP-IDF 侧 bsp_claw4.cpp 的 millis() 定义为 extern "C" uint32_t millis(void)，
+  // C++ 链接约定下与本声明一致，故不冲突。
+  uint32_t millis(void);
+#endif
 #include <stdint.h>
 #include <string.h>
 #include <math.h>

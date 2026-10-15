@@ -3,16 +3,51 @@
  */
 // sfx.h — 程序化音效运行时：事件环形队列 + 帧间隙派发 + 节流防吵
 // 音频数据零文件资源：tools/gen_sfx.py 合成 → sfx_data.h。
-// 硬件路径 = M5.Speaker.playRaw（M5Unified 自带混音任务，多轨重叠 OK）；
-// PC 仿真下派发为空实现（ARDUINO_M5STACK_TAB5 未定义），游戏逻辑零感知。
+//
+// ── v0.5.0（Claw4 移植）：平台后端从"单一 M5Unified"改为三选一 ─────────
+// 原来只有两个分支：定义 ARDUINO_M5STACK_TAB5 走 M5.Speaker.playRaw，
+// 否则走 PC 仿真空实现。Claw4 是第三种平台（ESP-IDF + esp_lcd/I2S），
+// 于是把"有真机硬件"与"用哪个硬件"拆成两个宏：
+//   PTD_AUDIO_HW   是否有真机音频后端（真机固件定义，仿真不定义）
+//   PTD_AUDIO_API  用哪个实现（PRAGMA_ONCE 在下面各平台段里定义）
+// 这样 game.h 只认 sfxPost()/sfxPump()，对新平台零感知——这正是原作者
+// "游戏逻辑零感知硬件"的设计意图，此前只是平台只有一个所以没显式化。
+//
+// 三个后端：
+//   PTD_AUDIO_M5UNIFIED  Tab5（M5Unified 的 playRaw，自带混音任务，多轨重叠 OK）
+//   PTD_AUDIO_CLAW4      Claw4（main/bsp_claw4.c 的 audioPlayRaw，I2S 直写）
+//   都不定义              PC 仿真：排空队列并记账，断言读 s_simPlay[]
+//
+// ⚠️ Tab5 那120 行 ES8388 I2C 寄存器 bulk 写入是 Tab5 专属 hack
+//   （修 PLL 不锁定），**一行都不能带到 Claw4**——Claw4 的 codec 控制方式
+//   完全不同（I2S + 独立 BT audio codec）。
 #pragma once
 #include <stdint.h>
 #include "config_gen.h"     // SCREEN_W/H（静音按钮几何）
 
-#ifdef ARDUINO_M5STACK_TAB5
+#include "sfx_data.h"
+
+// ── 平台后端选择 ─────────────────────────────────────────────────────
+// PTD_AUDIO_M5UNIFIED 与 PTD_AUDIO_CLAW4 由构建系统定义其一。
+#if defined(ARDUINO_M5STACK_TAB5) && !defined(PTD_AUDIO_M5UNIFIED) && !defined(PTD_AUDIO_CLAW4)
+  #define PTD_AUDIO_M5UNIFIED 1
+#endif
+
+#if defined(PTD_AUDIO_M5UNIFIED) || defined(PTD_AUDIO_CLAW4)
+  #define PTD_AUDIO_HW 1          // 有真机音频后端
+#else
+  #define PTD_AUDIO_HW 0          // PC 仿真
+#endif
+
+#ifdef PTD_AUDIO_M5UNIFIED
 #include <M5Unified.h>
 #endif
-#include "sfx_data.h"
+#ifdef PTD_AUDIO_CLAW4
+  // Claw4 的音频 API 由 BSP 提供（main/bsp_claw4.h，已用 extern "C" 包裹）。
+  // 这里不再重复声明——重复声明若链接属性不一致（一个是 C、一个是 C++）
+  // 会直接报 "conflicting declaration ... with 'C' linkage"。
+  // sfx.h 保持不 include BSP 头，从而对 BSP 的头路径零依赖。
+#endif
 
 // ── 音效 ID（与 sfx_data.h 的表一一对应）─────────────────────────
 // ⚠️ GUN/GUN2/GUN3 必须 ID 连续（game.h 用 SFXID_GUN + variant 轮换）
@@ -40,8 +75,7 @@ static const uint16_t SFX_MIN_IV[SFXID_COUNT] = {
 static uint32_t s_lastMs[SFXID_COUNT];      // millis() 缓存（仿真用 tick 计数）
 static uint32_t s_nowMs = 0;                // pump/主循环每帧刷新
 static bool     s_muted = false;
-#ifdef ARDUINO_M5STACK_TAB5
-#else
+#if !PTD_AUDIO_HW
 static uint32_t s_simPlay[SFXID_COUNT];    // 仿真记账：每音效"起播"次数
 #endif
 
@@ -60,18 +94,23 @@ static void sfxPost(uint8_t id) {
   s_qHead = next;
 }
 
-#ifdef ARDUINO_M5STACK_TAB5
-// [DIAG] 统一发射口：force=true 排除"流忙丢帧"，并打日志
+#ifdef PTD_AUDIO_M5UNIFIED
+// Tab5：M5Unified 的 playRaw 自带混音任务，多轨重叠 OK。
+// force=true 排除"流忙丢帧"（齐射时强占）。
 static void sfxPlay(const int16_t* d, uint32_t len) {
-  M5.Speaker.playRaw(d, len, SFX_SR, false, 1, -1, true);   // force=true：齐射时强占
+  M5.Speaker.playRaw(d, len, SFX_SR, false, 1, -1, true);
 }
 #define SFX_PLAY(d, len) sfxPlay((d), (len))
+#elif defined(PTD_AUDIO_CLAW4)
+// Claw4：BSP 的 audioPlayRaw（I2S 直写，阻塞但带 200ms 超时，绝不卡死主循环）。
+// sfx_data.h 是 16kHz PCM，与 Claw4 的 I2S 16kHz 天然对齐，无需重采样。
+#define SFX_PLAY(d, len) audioPlayRaw((d), (len), SFX_SR)
 #endif
 
 // ── 派发：主循环帧间隙调用（渲染之后）。每轮最多 N 条防尖峰 ──────
 // ⚠️ playRaw 在 begin() 前调用会失败但不崩；begin 由首次 pump 惰性执行。
 static void sfxPump(void) {
-#ifdef ARDUINO_M5STACK_TAB5
+#ifdef PTD_AUDIO_M5UNIFIED
   static bool begun = false;
   if (!begun) { M5.Speaker.begin(); M5.Speaker.setVolume(200); begun = true;
     // 根因修复（v0.4.4）：ES8388 时钟寄存器必须在 I2S MCLK 已运行后写入，
@@ -140,6 +179,12 @@ static void sfxPump(void) {
       case SFXID_EMP:    SFX_PLAY(SFX_EMP, SFX_EMP_LEN); break;
     }
   }
+#elif defined(PTD_AUDIO_CLAW4)
+  // Claw4：audioInit() 已在 main 里做过（含 I2S 通道启用）。这里只做音量设置，
+  // 惰性执行一次——音效可能在 audioInit 之前就被投递（虽然本项目不会，
+  // 但保持与 Tab5 同款的"幂等 begin"语义，避免顺序耦合）。
+  static bool begun = false;
+  if (!begun) { audioSetVolume(70); begun = true; }
 #else
   // PC 仿真：排空队列并记账——测试断言读 s_simPlay[]（与真机同份节流/投递）
   while (s_qTail != s_qHead) { s_simPlay[s_q[s_qTail]]++;
