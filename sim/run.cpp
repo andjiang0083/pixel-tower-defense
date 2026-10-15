@@ -7,7 +7,7 @@
 // 所以这里断言通过 == 固件逻辑真的对，不是另写了一份模拟器。
 // v0.2.0：10 关全量自动通关（贪心 bot）、多路径投放、选关状态机、
 //         HEALER/BOSS 技能、ELITE、解锁位图、经济采样。
-#include <M5Unified.h>       // fake
+#include <M5Unified.h>       // fake（显示侧已转 Gfx，见 sim/compat/M5Unified.h）
 #include "config_gen.h"
 #include "pixel_text.h"
 #include "game.h"
@@ -26,7 +26,7 @@ static void simCountSave(void) { ++s_simSaves; }
 #define CHECK(cond, ...) do { if (cond) ++g_pass; else { ++g_fail; \
   printf("  FAIL: "); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
-static M5GFX* D = &M5.Display;
+static Gfx* D = &M5.Display;
 
 // ── PPM 导出（真彩，直接吐帧缓冲；由 tools/to_png.py 转 PNG）────
 static void dumpPpm(const char* path) {
@@ -35,7 +35,7 @@ static void dumpPpm(const char* path) {
   uint8_t row[SCREEN_W * 3];
   for (int y = 0; y < SCREEN_H; ++y) {
     for (int x = 0; x < SCREEN_W; ++x) {
-      uint16_t c = D->fb[y * SCREEN_W + x];
+      uint16_t c = D->fb()[y * SCREEN_W + x];
       row[x*3+0] = (uint8_t)(((c >> 11) & 0x1F) << 3);
       row[x*3+1] = (uint8_t)(((c >> 5) & 0x3F) << 2);
       row[x*3+2] = (uint8_t)((c & 0x1F) << 3);
@@ -64,9 +64,9 @@ static void tick(int frames) {
     gameUpdate(33);                    // 真逻辑（面板打开=内部暂停）
     s_nowMs = g_simMs;                // v0.3.1：镜像 loop()——音效节流时钟
     sfxPump();                        // 仿真下排空队列（同份投递/节流代码）
-    uint64_t before = M5GFX::pxFilled;
+    uint64_t before = GfxFb::pxFilled;
     if (g_renderOn) renderFrame(D);  // 真渲染（长跑时关闭）
-    g_lastPx = M5GFX::pxFilled - before;
+    g_lastPx = GfxFb::pxFilled - before;
   }
 }
 
@@ -865,7 +865,7 @@ int main(int argc, char** argv) {
     int black=0;
     for (int x=BTN_X; x<BTN_X+24; ++x)
       for (int y=BTN_Y; y<BTN_Y+BTN_H; ++y)
-        if (D->fb[y*SCREEN_W+x]==C_UI_BG && x<BAR_X) ++black;  // 按钮左缘被刷黑
+        if (D->fb()[y*SCREEN_W+x]==C_UI_BG && x<BAR_X) ++black;  // 按钮左缘被刷黑
     CHECK(black==0, "HUD WAVE plate overlaps NEXT WAVE button: %d px", black);
     // 底板右缘必须留在按钮之前
     CHECK(956 + (FONT_W+1)*3*5 + 8 <= BTN_X, "WAVE plate too wide");
@@ -875,7 +875,7 @@ int main(int argc, char** argv) {
     g_w.selectedTower=ti; tick(2);                        // 第一行塔：框伸进 HUD
     g_w.selectedTower=-1; tick(3);                        // 关面板 → eraseRangeBox
     int tagLost=0;
-    for (int x=800;x<860;++x) if (D->fb[24*SCREEN_W+x]==C_TEXT_DIM) ++tagLost;
+    for (int x=800;x<860;++x) if (D->fb()[24*SCREEN_W+x]==C_TEXT_DIM) ++tagLost;
     CHECK(tagLost>10, "HUD WAVE label erased by range-box cleanup: %d px", tagLost);
   }
 
@@ -894,7 +894,7 @@ int main(int argc, char** argv) {
     int residue=0;
     // 扫旧框四条边（避开面板/按钮区域：只扫地图带内）
     auto isBtnHi=[&](int x,int y){ if(y<MAP_TOP||y>=BUILD_BAR_Y) return false;
-      uint16_t c=D->fb[y*SCREEN_W+x]; return c==C_BTN_HI; };
+      uint16_t c=D->fb()[y*SCREEN_W+x]; return c==C_BTN_HI; };
     for (int x=tcx-rr+3;x<tcx+rr-3;++x){ if(isBtnHi(x,tcy-rr))++residue; if(isBtnHi(x,tcy+rr))++residue; }
     for (int y=tcy-rr+3;y<tcy+rr-3;++y){ if(isBtnHi(tcx-rr,y))++residue; if(isBtnHi(tcx+rr,y))++residue; }
     CHECK(residue==0, "range box residue after close: %d px", residue);
@@ -1148,14 +1148,14 @@ int main(int argc, char** argv) {
     g_unlocked = 0x0001; g_cleared = 0;                     // 只解锁 L1
     g_w.state = ST_SEL; drawLevelSelect(D);
     const int cx = selNodeX(2) + SEL_NODE_W/2, cy = selNodeY(0) + SEL_NODE_H/2;  // 节点正中心=两红叉对角线交点
-    const uint16_t before = D->fb[cy * SCREEN_W + cx];
+    const uint16_t before = D->fb()[cy * SCREEN_W + cx];
     tapAt(cx, cy);                                          // 点锁定节点
     CHECK(g_selFx.lifeFrames > 0, "locked tap did not arm selFx");
     updateSelFx(D);                                         // 画一帧红叉
-    CHECK(D->fb[cy * SCREEN_W + cx] == C_BAD, "locked feedback not red");
+    CHECK(D->fb()[cy * SCREEN_W + cx] == C_BAD, "locked feedback not red");
     for (int i = 0; i < 25; ++i) updateSelFx(D);            // 20 帧到期自擦
     CHECK(g_selFx.lifeFrames == 0, "selFx did not expire");
-    CHECK(D->fb[cy * SCREEN_W + cx] == before, "node not restored after selFx");
+    CHECK(D->fb()[cy * SCREEN_W + cx] == before, "node not restored after selFx");
   }
 
   // ── 18. v0.4.1：波量公式唯一化（waveSize 与旧硬编码逐点一致）─────

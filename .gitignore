@@ -1,6 +1,8 @@
 # 构建产物（246MB，绝不入库）
 .pio/
+build/.pio/
 sim/sim
+sim/sim_*
 sim/*.dSYM
 *.o
 *.bin
@@ -8,9 +10,18 @@ sim/*.dSYM
 *.map
 .vscode/
 
+# v0.5.0：生成物按 profile 分目录（build/<profile>/config_gen.h）。
+#   config_gen.h 本身**入库**（不加任何忽略规则）——CI 的漂移检查拿它跟
+#   tools/layout.py 的输出对比，是"单一真源"纪律的牙齿：生成器改了但没
+#   重新生成，CI 必须红。上游靠 src/config_gen.h 入库实现同一件事，
+#   现在只是搬了目录。同理 pixel_font.h / cn_font.h / sfx_data.h 仍留在
+#   src/ 且入库。
+
 # 仿真/预览的中间产物（可再生成，真源在 tools/）
 sim_*.ppm
 shot*.ppm
+build/*/preview-lv*.png
+build/*/preview.png
 preview-lv*.png
 /preview.png
 

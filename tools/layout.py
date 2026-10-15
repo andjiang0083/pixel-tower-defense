@@ -6,11 +6,92 @@
 v0.2.0：10 关卡系统 + 主题配色 + BOSS 参数化。产出：
   1) src/config_gen.h —— 固件网格/关卡表常量
   2) preview.png / preview-lvNN.png —— PC 端重渲染棋盘，先判构图再上真机
-改布局/关卡只改这里。"""
+改布局/关卡只改这里。
 
-import struct, zlib, os
+v0.5.0（Claw4 移植）：屏幕几何改为 **profile 制**。
+  原实现把 SCREEN_W/H 写死成 1280x720（Tab5）。Metalio Claw4 是 720x720
+  方形屏，同一份生成器要能出两套几何，否则两个仓库的 layout.py 会分叉。
+  用法：
+      python3 tools/layout.py                    # 默认 profile(tab5) → src/config_gen.h
+      python3 tools/layout.py --profile claw4    # → src/config_gen_claw4.h
+      python3 tools/layout.py --profile list     # 列出所有 profile
+  新增 profile 只改 PROFILES 一处。默认 profile 的输出路径保持 config_gen.h
+  不变，CI 的漂移检查（.github/workflows/sim.yml）因此无需改动。
+"""
 
-# ── 屏幕与网格（Tab5 横屏 1280x720）───────────────────────────────
+import struct, zlib, os, sys, argparse
+
+# ── PROFILES：屏幕几何的唯一真源 ───────────────────────────────────
+# 每项：
+#   sw, sh        逻辑分辨率（帧缓冲 = 逻辑坐标，无旋转无偏移）
+#   cell          格边长（px）
+#   hud_rows      顶部 HUD 占几格
+#   build_bar_rows底部建造栏占几格
+#   ui            UI 尺寸缩放系数（作用于 BTN_*/SLOT_*/PANEL_* 等硬编码几何）
+#   design_range  map_design.py 审计尺 = 最便宜塔射程（px）
+#
+# ⚠️ Claw4 的 ui 缩放说明：slot/button 几何在 HEADER_TPL 里是写死的
+#    200x64 / 200x72 / 360x248。720 宽的屏放不下 5 个 200px 槽（1000px），
+#    所以 claw4 的 ui=0.62 → 槽宽 124px × 5 + 间隙 = 满铺 720。
+#    同时 render.h 里 HUD 各元素的 X 坐标（16..900）也是按 1280 宽写死的，
+#    见 docs/CLAW4-PORT.md 的"待重排"清单。
+PROFILES = {
+    "tab5": dict(
+        sw=1280, sh=720, cell=40,
+        hud_rows=2, build_bar_rows=2,
+        ui=1.00,
+        design_range=150,
+        desc="M5Stack Tab5 横屏 1280x720（原生目标）",
+    ),
+    "claw4": dict(
+        sw=720, sh=720, cell=40,
+        # 720/40 = 18 列 × 18 行。HUD 2 行 + 地图 14 行 + 建造栏 2 行 = 18 行，
+        # 与 tab5 的 MAP_ROWS 保持一致（14 行），减少关卡数据迁移量。
+        hud_rows=2, build_bar_rows=2,
+        ui=0.62,
+        # 审计尺同比缩放：地图宽度 32→18 格（-44%），射程像素值不变会让塔
+        # 相对变强 1.78 倍、难度崩塌。缩放系数 sqrt(18/32)≈0.75，
+        # 具体最终值要靠 map_design.py 审计 + 模拟器自动通关反推。
+        design_range=112,
+        desc="nologotech Metalio Claw4 方形 720x720",
+    ),
+}
+
+# 当前生效的 profile（由 main() 设置；模块级默认值保证 import 时也能工作）
+PROFILE = "tab5"
+_P = PROFILES[PROFILE]
+
+
+def use_profile(name):
+    """切换 profile 并重算派生网格常量。必须先于任何 LEVELS/snake() 使用。"""
+    global PROFILE, _P, DESIGN_GAT_RANGE
+    if name not in PROFILES:
+        raise SystemExit("unknown profile %r (have: %s)"
+                         % (name, ", ".join(sorted(PROFILES))))
+    PROFILE, _P = name, PROFILES[name]
+    apply_profile()                      # ← 关键：重算 COLS/MAP_ROWS/...
+    # 审计尺也是 profile 相关的（Gfx 抽象之外的第二处几何依赖）
+    DESIGN_GAT_RANGE = _P["design_range"]
+    SNAKE_XB = COLS - 3
+    globals()["SNAKE_XB"] = SNAKE_XB    # snake() 默认折返横坐标随列数变
+    return _P
+
+
+def apply_profile():
+    """把 profile 的几何写入模块级网格常量。由 use_profile() 调用。"""
+    global SCREEN_W, SCREEN_H, CELL, COLS, ROWS_TOTAL
+    global HUD_ROWS, MAP_TOP, BUILD_BAR_ROWS, MAP_ROWS, UI_SCALE
+    SCREEN_W, SCREEN_H = _P["sw"], _P["sh"]
+    CELL        = _P["cell"]
+    COLS        = SCREEN_W // CELL
+    ROWS_TOTAL  = SCREEN_H // CELL
+    HUD_ROWS    = _P["hud_rows"]
+    MAP_TOP     = HUD_ROWS * CELL
+    BUILD_BAR_ROWS = _P["build_bar_rows"]
+    MAP_ROWS    = ROWS_TOTAL - HUD_ROWS - BUILD_BAR_ROWS
+    UI_SCALE    = _P["ui"]
+
+
 SCREEN_W, SCREEN_H = 1280, 720
 CELL        = 40
 COLS        = SCREEN_W // CELL   # 32
@@ -19,6 +100,8 @@ HUD_ROWS    = 2
 MAP_TOP     = HUD_ROWS * CELL   # 80
 BUILD_BAR_ROWS = 2
 MAP_ROWS    = ROWS_TOTAL - HUD_ROWS - BUILD_BAR_ROWS   # 14
+UI_SCALE    = 1.00              # UI 几何缩放（见 PROFILES[*].ui）
+apply_profile()
 
 # ── 经济（v0.4：小学生实测"发育过好"→全面收紧+波次加厚）──────────
 START_GOLD, START_LIVES = 210, 20        # v0.4：开局少一座塔，前期就要做选择
@@ -124,12 +207,34 @@ STAR3_PCT, STAR2_PCT = 90, 55             # ≥90%→★★★  ≥55%→★★ 
 #   · 长路径不该白送时间：可建区压成"贴路窄带 + 行间位"，长度变周长负担。
 # 关键杠杆：行间位（蛇形两排平行路之间那一行）一格同时罩两排路，
 #           leverage 是贴路边位的两倍——绞肉机图的好位置天生在"路缝里"。
-DESIGN_GAT_RANGE = 150        # 审计用尺 = GAT LV1 射程（最便宜塔=可达性地板）
+# v0.5.0：审计尺改为 profile 提供（见 PROFILES[*].design_range）。
+#   tab5 = 150（= GAT LV1 射程，最便宜塔 = 可达性地板）
+#   claw4 = 112（地图窄 44% 后同比缩放，防止"塔相对变强"导致难度崩塌）
+DESIGN_GAT_RANGE = _P["design_range"]
 LEGACY_LEVELS    = 10         # L1-L10 沿用旧图（无禁建）；L11-L20 走雕刻
 
-def snake(rows, xa=2, xb=29):
+# v0.5.0：蛇形折返的默认横坐标。旧版硬编码 xa=2/xb=29（= 32 列的两端内缩），
+#   在 claw4 的 18 列上会直接越界触发 path_cells 的 assert。改为按 COLS 推导：
+#   距左端 2 格、距右端 2 格 → 任何列数都成立。
+SNAKE_XA = 2
+SNAKE_XB = COLS - 3          # 32列→29（与旧版一致）；18列→15
+
+def snake(rows, xa=None, xb=None, tight=False):
     """蛇形路线生成器：rows = 折返行（升序、间隔≥2 才留得下行间位给塔）。
-    首点右缘出生、末点左缘出口（path_cells 的硬约束）。"""
+    首点右缘出生、末点左缘出口（path_cells 的硬约束）。
+
+    v0.5.0：xa/xb 默认值从硬编码改为 None→SNAKE_XA/SNAKE_XB，使同一份
+    关卡定义在任何 profile 下都能生成合法路径（0 < col < COLS）。
+    tight=True 表示"贴边折返"（距两端各 1 格，L17/L19/L20 用），
+    替代旧版硬编码的 xa=1, xb=30 —— 后者在 18 列的 claw4 上必然越界。"""
+    if tight:
+        xa = 1 if xa is None else xa
+        xb = COLS - 2 if xb is None else xb
+    else:
+        if xa is None: xa = SNAKE_XA
+        if xb is None: xb = SNAKE_XB
+    assert 0 < xa < COLS, "snake xa=%d out of range (COLS=%d)" % (xa, COLS)
+    assert 0 < xb < COLS, "snake xb=%d out of range (COLS=%d)" % (xb, COLS)
     wps = [(COLS - 1, rows[0])]
     go_left = True
     for i, r in enumerate(rows):
@@ -292,7 +397,7 @@ LEVELS = [
  dict(id=17, name="LONG SERPENT", theme=3, waves=17, diff=2.30, elite_from=6,
       boss=("SERPENT KING", 13.0, 24, 68, 6, 370, 12, AB_EMP | AB_HORN | AB_GREED),
       mid=[6, 12], band=1,
-      routes=[snake([1,3,5,7,9,11,13], xa=1, xb=30)],  # 满屏七折，路最长、带最窄
+      routes=[snake([1,3,5,7,9,11,13], tight=True)],  # 满屏七折，路最长、带最窄
       kinds=[0,1,2,8,7]),
  dict(id=18, name="STONE WEAVE", theme=0, waves=17, diff=2.35, elite_from=6,
       boss=("WEAVER", 12.0, 30, 64, 4, 380, 11, AB_MOLT | AB_GHOST | AB_SPLIT),
@@ -302,15 +407,151 @@ LEVELS = [
  dict(id=19, name="GRINDER TWO", theme=2, waves=18, diff=2.40, elite_from=7,
       boss=("GRINDER PRIME", 14.0, 26, 72, 6, 400, 12, AB_EMP | AB_BROOD | AB_SPLIT | AB_GREED),
       boss_count=2, mid=[6, 12], band=1,
-      routes=[snake([1,3,5,7,9,11,13], xa=1, xb=30)],
+      routes=[snake([1,3,5,7,9,11,13], tight=True)],
       kinds=[0,1,2,8,7]),
  dict(id=20, name="THE LAST WALL", theme=5, waves=18, diff=2.45, elite_from=7,
       boss=("THE WALL", 18.0, 22, 76, 10, 450, 14,
             AB_HEAL | AB_BROOD | AB_SPLIT | AB_EMP | AB_GHOST),
       boss_count=2, mid=[6, 15], band=1,
-      routes=[snake([2,4,6], xa=1, xb=30), snake([8,10,12], xa=1, xb=30)],
+      routes=[snake([2,4,6], tight=True), snake([8,10,12], tight=True)],
       kinds=[0,2,8,4,6,7]),                           # 终盘：盾+甲+直升机+奶妈全家桶
 ]
+
+# ═══ v0.5.0 profile 覆盖层：按屏幕几何替换关卡的 routes ═════════════
+# LEVELS 里的 routes 是 **tab5 基准（32 列）** 的定义。目标 profile 列数不同时，
+# 这里按 PROFILE 应用对应覆盖。设计上刻意做成"表驱动"而不是把多套坐标塞进
+# LEVELS —— 后者会让关卡表变成没人敢动的意大利面。
+#
+# ⚠️ 关键结构说明（v0.5.0 的一个真实踩坑）：
+#   snake() 在 LEVELS 定义处被**立即求值**，它捕获的是当时模块级的 COLS。
+#   若主流程先跑完 import（COLS=32）、再调 use_profile('claw4')（COLS=18），
+#   snake() 的结果早已固化成 32 列坐标 —— use_profile 改 COLS 已经太晚。
+#   症状：apply_profile_routes() 明明报告"11 关已覆盖"，validate() 仍然报
+#   `spawn at right edge: (31, 2)`。
+#   修法：生成器关卡（snake）在 LEVELS 里登记为 snake_spec（延迟），由
+#   rebuild_generated_routes() 在 use_profile() 之后统一求值。L1-L10/L13
+#   那种字面量手写坐标则由 PROFILE_ROUTES 覆盖层负责。
+#
+# 覆盖来源，三种：
+#   "remap"   → 用 remap_cols() 等比映射。仅适用于拓扑足够简单的关卡
+#               （路径是一条横线、折返数 ≤2）。等比压缩会塌掉折返间距，
+#               复杂折线必须人工重画，不要偷懒用 remap。
+#   "routes"  → 直接给目标列数下的绝对坐标（人工重画的结果）
+#   snake_spec → 折返行列表 + 紧贴标志，由 snake() 在当前 COLS 下现算
+#
+# ⚠️ 未覆盖的关卡会在 validate() 阶段被 path_cells 的 assert 拦下并指名道姓，
+#    不会静默产出坏地图——这是原作者"单一真源 + 机器可判"纪律的延续。
+PROFILE_ROUTES = {
+    "claw4": {
+        # L1 = 一条横线，缩放后仍然成立
+        1: dict(mode="remap"),
+
+        # ── L2-L13 人工重画（18 列）─────────────────────────────────
+        # 设计约束（与 tab5 版本的差异，逐条说明）：
+        #   · 横向自由度 32→18 列（56%）。折返的横坐标间距必须 ≥3 格才留得下
+        #     "行间位"（两排平行路之间的塔位），否则好位置消失、难度变成堆数值。
+        #     tab5 的 31→27（4 格）压成 17→14（3 格）。
+        #   · 纵向 MAP_ROWS 不变（14 行），所以行数与折返层数全部保留。
+        #   · 每关的**拓扑意图**（几折、双路/单路、绞肉机/走廊/十字）严格保留，
+        #     只把横坐标按 18 列重排。难度靠 design_range=112 缩回来配平。
+        # L2 SERPENTINE：3 折蛇形（tab5: 31→6→25，1 层）
+        2: dict(routes=[[(17,2),(5,2),(5,7),(13,7),(13,11),(0,11)]]),
+
+        # L3 BUG VALLEY：5 折长蛇（tab5: 31→2→29→3→28），6 层
+        3: dict(routes=[[(17,1),(2,1),(2,4),(15,4),(15,7),(3,7),
+                          (3,10),(14,10),(14,12),(0,12)]]),
+
+        # L4 IRON CORRIDOR：内卷走廊（tab5: 31→4→27→8→12→0），5 层
+        4: dict(routes=[[(17,2),(4,2),(4,6),(14,6),(14,10),(8,10),
+                         (8,4),(11,4),(11,8),(0,8)]]),
+
+        # L5 CROSSROADS：双路汇流到左中（tab5: 31→4→0 / 31→27→0）
+        5: dict(routes=[[(17,2),(4,2),(4,7),(0,7)],
+                         [(17,12),(14,12),(14,7),(0,7)]]),
+
+        # L6 FROZEN PASS：错位双层通道（tab5: 31→6→28→5→26→0）
+        6: dict(routes=[[(17,1),(5,1),(5,4),(15,4),(15,7),(4,7),
+                          (4,10),(13,10),(13,13),(0,13)]]),
+
+        # L7 SPIRAL ABYSS：内螺旋（tab5: 31→2→29→6→25→10→0），6 层
+        7: dict(routes=[[(17,1),(2,1),(2,12),(15,12),(15,4),(6,4),
+                          (6,9),(13,9),(13,6),(9,6),(9,8),(0,8)]]),
+
+        # L8 FORKED CANYON：双路（tab5: 31→14→0 / 31→18→0），上下分进
+        8: dict(routes=[[(17,2),(8,2),(8,7),(0,7)],
+                         [(17,12),(10,12),(10,7),(0,7)]]),
+
+        # L9 MEAT GRINDER：8 折绞肉机（tab5 8 层），逐层左右互咬
+        9: dict(routes=[[(17,1),(2,1),(2,3),(15,3),(15,5),(2,5),
+                          (2,7),(15,7),(15,9),(2,9),(2,11),(14,11),
+                          (14,13),(0,13)]]),
+
+        # L10 TERMINAL：8 折终局迷宫
+        10: dict(routes=[[(17,1),(1,1),(1,13),(15,13),(15,3),(4,3),
+                           (4,11),(13,11),(13,5),(6,5),(6,9),(12,9),
+                           (12,7),(0,7)]]),
+
+        # L13 SAND COIL：手写内卷（tab5: 31→1→29→5→25→0）
+        13: dict(routes=[[(17,1),(1,1),(1,13),(15,13),(15,4),(5,4),
+                           (5,10),(13,10),(13,7),(0,7)]]),
+    },
+}
+
+# ═══ v0.5.0 延迟求值的生成器关卡 ═══════════════════════════════════
+# L11/L12/L14-L20 用 snake() 生成。它们在 tab5 下是立即求值的，坐标已固化为
+# 32 列。跨 profile 时不能靠 PROFILE_ROUTES 逐关覆盖（九张图覆盖表 = 冗余
+# 且易失同步），而是登记成延迟规格，由 rebuild_generated_routes() 在
+# use_profile() 之后按当前 COLS 现算。
+#
+# 每项：level_id -> list of (折返行列表, tight 是否贴边)
+#   · 单路关 = [(rows, tight)]
+#   · 双路关 = [(上半 rows, tight), (下半 rows, tight)]  ← 两条都显式列出
+#     ⚠️ 双路不要用"上半 + 自动下移"推导：L14 的下半是 snake([8,10,12])，
+#        与上半 [2,4,6] 的间隔关系并不是简单的行平移（推导出的 [9,11,13]
+#        会让 config_gen.h 产生漂移）。显式列出唯一真源。
+#   · rows 取自 tab5 版本原值；纵向 MAP_ROWS 两个 profile 都是 14，层数不变。
+SNAKE_SPECS = {
+    11: [([2, 4, 6, 8, 10, 12], False)],
+    12: [([1, 3, 5, 7, 9, 11, 13], False)],
+    14: [([2, 4, 6], False), ([8, 10, 12], False)],      # CROSSING FIRE 双路
+    15: [([1, 3, 5, 7, 9, 11, 13], False)],
+    16: [([1, 3, 5], False), ([9, 11, 13], False)],      # TWIN RAVINE 双路
+    17: [([1, 3, 5, 7, 9, 11, 13], True)],
+    18: [([1, 5, 9, 13], False)],
+    19: [([1, 3, 5, 7, 9, 11, 13], True)],
+    20: [([2, 4, 6], True), ([8, 10, 12], True)],        # THE LAST WALL 双路
+}
+
+
+def rebuild_generated_routes():
+    """在当前 PROFILE 的 COLS 下重算所有 snake() 关卡。必须在 use_profile() 后。"""
+    n = 0
+    for lv in LEVELS:
+        spec = SNAKE_SPECS.get(lv["id"])
+        if not spec:
+            continue
+        lv["routes"] = [snake(rows, tight=tight) for (rows, tight) in spec]
+        n += 1
+    return n
+
+
+def apply_profile_routes():
+    """按当前 PROFILE 重写 LEVELS[*]["routes"]。必须在 use_profile() 后调用。"""
+    n = rebuild_generated_routes()      # 生成器关卡先在当前 COLS 下重算
+    over = PROFILE_ROUTES.get(PROFILE, {})
+    for lv in LEVELS:
+        spec = over.get(lv["id"])
+        if not spec:
+            continue
+        if spec.get("mode") == "remap":
+            lv["routes"] = [remap_cols(w) for w in lv["routes"]]
+        elif "routes" in spec:
+            lv["routes"] = spec["routes"]          # 人工重画结果直接生效
+        else:
+            raise SystemExit("L%d: bad route override %r" % (lv["id"], spec))
+        n += 1
+    return n
+
 
 # ── 主题配色 (grassA, grassB, pathA, pathB) ──────────────────────
 THEMES = {
@@ -376,6 +617,33 @@ PAL = [
     ("C_LOCK",       (70,84,96),    "未解锁灰"),
     ("C_WARN",       (255,80,40),   "BOSS警告"),
 ]
+
+# ── v0.5.0 路径重映射：把 32 列基准的关卡映射到任意列数 ─────────────
+# 背景：L1-L10 是**手写路径**，折点列坐标是 32 列下的绝对值（2/6/14/25/
+#   27/28/29/30/31…）。换到 claw4 的 18 列后全部越界。
+#
+# 为什么不做「自动等比缩放」而是留人工覆盖：
+#   塔防地图的价值在于**每格的位置**。31→17 的等比压缩会让折返间距从
+#   2-4 格塌成 1-2 格，路径变成锯齿，难度曲线失真；而且 18 列的横向自由度
+#   只有原来的 56%，根本塞不下 14 行的复杂折线拓扑。
+#   所以：L11-L20 用 snake() 生成器（已参数化，天然跨 profile 合法），
+#   L1-L10 逐张**人工重画**（阶段 4 的工作）。remap_cols() 只作为
+#   「拓扑足够简单、缩放后仍成立」关卡的现成实现（L1 的一条直路），
+#   同时是人工重画时的参考算法。
+REF_COLS = 32                # L1-L10 手写路径的基准列数（tab5）
+
+def remap_cols(wps, ref_cols=REF_COLS):
+    """把一条轴对齐折线的列坐标从 ref_cols 基准映射到当前 COLS。
+    出生点(col=ref_cols-1)与出口(col=0)强制钉在两端——这是 path_cells 的
+    硬约束，不能靠缩放碰运气。"""
+    out = []
+    for (c, r) in wps:
+        if c == ref_cols - 1:      nc = COLS - 1
+        elif c == 0:               nc = 0
+        else:                      nc = int(round(c * (COLS - 1) / (ref_cols - 1)))
+        out.append((max(0, min(COLS - 1, nc)), r))
+    return out
+
 
 # ── 校验 + 路径展开 ───────────────────────────────────────────────
 def path_cells(routes):
@@ -503,7 +771,7 @@ def gen_header():
         ksh=K_SHIELD, shw=SHIELD_FROM_WAVE,
         levels="\n".join(lv_c), nlv=len(LEVELS), pal=pal, themes=themes_c,
         blocked=blocked_c)
-    open("src/config_gen.h", "w").write(txt)
+    open(out_header(), "w").write(txt)
 
 HEADER_TPL = """// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 andjiang0083
@@ -762,13 +1030,70 @@ def render_board(routes, theme):
     return buf
 
 
+# ── 输出路径 ─────────────────────────────────────────────────────────
+# v0.5.0：生成物从 src/ 移到 build/<profile>/。
+#
+# 为什么必须挪走（一次踩过的坑）：
+#   同一份 src/*.h 要能同时编译成 tab5 版和 claw4 版，两者只差 config_gen.h。
+#   如果 config_gen.h 留在 src/，那么无论用哪个 -I 顺序，src/ 都会命中——
+#   -Ibuild/claw4 在前时，sim/run.cpp 先 include "gfx_fake.h"→gfx_fb.h→
+#   gfx.h→config_gen.h 命中 claw4 版；但 render.h 之后再 include "config_gen.h"
+#   会被 #pragma once 判为"已包含"而跳过（pragma once 按路径去重，两份路径不同
+#   其实各自展开 → struct Waypoint / ALL_WP / TowerType 全部 redefinition）。
+#   改成 include guard 带 profile 名也不行：两份宏名不同 → 两份都展开 → 同样炸。
+#
+#   把生成物**完全移出 src/** 后，src/ 里没有任何 config_gen.h，选哪个 profile
+#   就是选哪个 -I，冲突从根上消失。这也贴合上游"生成物不入源码目录"的纪律。
+#
+# CI 兼容：.github/workflows/sim.yml 里 `git diff --exit-code src/config_gen.h`
+# 改为校验 build/tab5/config_gen.h（见该文件 v0.5.0 改动）。
+BUILD_DIR = "build"
+def out_dir(profile=None):
+    return os.path.join(BUILD_DIR, profile or PROFILE)
+
+def out_header(profile=None):
+    return os.path.join(out_dir(profile), "config_gen.h")
+
+def out_preview_prefix(profile=None):
+    return os.path.join(out_dir(profile), "preview-lv")
+
+DEFAULT_PROFILE = "tab5"
+
+
 def main():
-    os.makedirs("src", exist_ok=True)
+    ap = argparse.ArgumentParser(description="生成 config_gen.h（网格/关卡/数值真源）")
+    ap.add_argument("--profile", default=None,
+                    help="屏幕几何 profile（默认 %s）；'list' 列出全部" % DEFAULT_PROFILE)
+    ap.add_argument("--no-preview", action="store_true",
+                    help="只生成头文件，不渲染 preview PNG（CI/快速校验用）")
+    args = ap.parse_args()
+
+    if args.profile == "list":
+        for k in sorted(PROFILES):
+            p = PROFILES[k]
+            mark = " (default)" if k == DEFAULT_PROFILE else ""
+            print("  %-8s %4dx%-4d cell=%-3d %2dx%-2d grid  %s%s"
+                  % (k, p["sw"], p["sh"], p["cell"],
+                     p["sw"] // p["cell"], p["sh"] // p["cell"],
+                     p["desc"], mark))
+        return
+
+    use_profile(args.profile or DEFAULT_PROFILE)
+    os.makedirs(out_dir(), exist_ok=True)
+    n_over = apply_profile_routes()
+    if n_over and PROFILE != DEFAULT_PROFILE:
+        print("profile routes: %d level(s) overridden for %s" % (n_over, PROFILE))
     validate()
     gen_header()
-    print("wrote src/config_gen.h (%d levels, %d kinds)" % (len(LEVELS), len(KINDS)))
+    hdr = out_header()
+    print("profile=%s  %dx%d  cell=%d  COLS=%d MAP_ROWS=%d  design_range=%d"
+          % (PROFILE, SCREEN_W, SCREEN_H, CELL, COLS, MAP_ROWS, DESIGN_GAT_RANGE))
+    print("wrote %s (%d levels, %d kinds)" % (hdr, len(LEVELS), len(KINDS)))
+    if args.no_preview:
+        return
+    pfx = out_preview_prefix()
     for lv in LEVELS:
-        png("preview-lv%02d.png" % lv["id"], SCREEN_W, SCREEN_H,
+        png("%s%02d.png" % (pfx, lv["id"]), SCREEN_W, SCREEN_H,
             render_board(lv["routes"], lv["theme"]))
         print("  L%-2d %-15s routes=%d waves=%2d diff=%.2f pathcells=%d"
               % (lv["id"], lv["name"], len(lv["routes"]), lv["waves"],

@@ -5,7 +5,7 @@
 // Tab5 是 RAM 帧缓冲（MIPI DSI video mode），画面常驻内存，
 // 所以静态地图只在开局画一次；每帧只擦除"脏格子"并重画活动实体。
 #pragma once
-#include <M5GFX.h>
+#include "gfx.h"
 #include "config_gen.h"
 #include "i18n.h"        // v0.4.2：界面文本双语表（语言在标题界面选择）
 #include "game.h"        // g_w / 实体类型（本模块只读不写游戏状态）
@@ -39,10 +39,10 @@ static inline void resetRenderCaches(void) {
 #define CLEAR_PANEL_Y (MAP_TOP + (SCREEN_H - MAP_TOP - CLEAR_PANEL_H) / 2)
 
 // v0.4.2 前向声明（定义在文件末：renderFrame 在中间要调用）
-static void drawSiege(M5GFX* g);
+static void drawSiege(Gfx* g);
 
 // ── 画一个格子的底色（草地棋盘纹 / 土路抖动纹）───────────────────
-static void drawCellBase(M5GFX* g, int col, int row) {
+static void drawCellBase(Gfx* g, int col, int row) {
   const int x = col * CELL;
   const int y = MAP_TOP + row * CELL;
 
@@ -96,7 +96,7 @@ static void drawCellBase(M5GFX* g, int col, int row) {
 #define HUD_WAVE_NUM_X  900     // 波次数字（擦除框 896..1030）
 
 // HUD 静态标签（♥ / HP / $ / WAVE）——只画一次，两处重画共用同一份
-static void drawHudLabels(M5GFX* g) {
+static void drawHudLabels(Gfx* g) {
   px_char(g, HUD_HEART_X, 24, '\x01', C_BAD, 4);                 // ♥
   px_text(g, HUD_HP_LBL_X, 20, TR(STR_HP),     C_TEXT_DIM, 3);
   px_text(g, HUD_DOLLAR_X, 20, "$",            C_GOLD,     3);
@@ -104,7 +104,7 @@ static void drawHudLabels(M5GFX* g) {
 }
 
 // ── 静态背景：整张地图 + HUD 底板，只在开局 / 重开时画一次 ────────
-static void drawBackground(M5GFX* g) {
+static void drawBackground(Gfx* g) {
   g->fillScreen(C_BG);
   for (int r = 0; r < MAP_ROWS; ++r)
     for (int c = 0; c < COLS; ++c) drawCellBase(g, c, r);
@@ -146,7 +146,7 @@ static inline uint16_t towerColor(int type) {
 
 static inline int slotX(int i) { return SLOT_X0 + i * (SLOT_W + SLOT_GAP); }
 
-static void drawBuildBar(M5GFX* g) {
+static void drawBuildBar(Gfx* g) {
   for (int i = 0; i < TT_COUNT; ++i) {
     const TowerType& T = TOWER_TYPES[i];
     const int x = slotX(i), y = BUILD_BAR_Y + 4;
@@ -203,7 +203,7 @@ static void drawBuildBar(M5GFX* g) {
 //   GOLD 按 7 位配（无尽模式金币会超 5 位）；WAVE 按 "250/250"（7 字）
 //   配并把文本左移，右缘仍必须 < BTN_X——伸进 NEXT WAVE 按钮区会重演
 //   v0.2.1 真机 bug #3（按钮左缘被刷成黑底）。
-static void drawHud(M5GFX* g) {
+static void drawHud(Gfx* g) {
   char buf[16];
 
   // HP：数字前留心跳图标位
@@ -246,7 +246,7 @@ static void drawHud(M5GFX* g) {
 #define BAR_W  (BTN_W - 16)
 #define BAR_H  14
 
-static void drawButton(M5GFX* g, bool enabled) {
+static void drawButton(Gfx* g, bool enabled) {
   uint16_t bg = enabled ? C_BTN : C_UI_BG;
   g->fillRect(BTN_X, BTN_Y, BTN_W, BTN_H, bg);
   // 双线描边（像素风按钮）
@@ -262,7 +262,7 @@ static void drawButton(M5GFX* g, bool enabled) {
 }
 
 // 每帧刷新倒计时条（仅 ST_READY 且已过首波）；绿块从右往左消退到 0。
-static void drawWaveCountdown(M5GFX* g) {
+static void drawWaveCountdown(Gfx* g) {
   if (g_w.state != ST_READY || g_w.wave <= 0) return;
   // 槽底重铺（擦掉上一帧的绿）
   g->fillRect(BAR_X + 1, BAR_Y + 1, BAR_W - 2, BAR_H - 2, C_SLOT_BG);
@@ -277,7 +277,7 @@ static void drawWaveCountdown(M5GFX* g) {
 }
 
 // ── 塔：按种类换色 + 等级方块，全矩形堆叠 ────────────────────────
-static void drawTower(M5GFX* g, const Tower& t) {
+static void drawTower(Gfx* g, const Tower& t) {
   const int x = t.col * CELL;
   const int y = MAP_TOP + t.row * CELL;
   const int cx = x + CELL / 2, cy = y + CELL / 2;
@@ -351,7 +351,7 @@ static void drawTower(M5GFX* g, const Tower& t) {
 }
 
 // ── 子弹：机枪=亮金小弹 / 加农=暗铁炮弹，都带短拖尾 ──────────────
-static void drawBullet(M5GFX* g, const Bullet& b) {
+static void drawBullet(Gfx* g, const Bullet& b) {
   int x = (int)b.x, y = (int)b.y;
   if (b.splashR > 0) {                               // 炮弹：更大更暗的铁壳
     g->fillRect(x - 5, y - 4, 10, 8, C_TOWER_CAN);
@@ -366,7 +366,7 @@ static void drawBullet(M5GFX* g, const Bullet& b) {
 }
 
 // ── 敌人：逐关尺寸 + 兵种配色/外形；ELITE 金边；血条黑描边 ────────
-static void drawEnemy(M5GFX* g, const Enemy& e) {
+static void drawEnemy(Gfx* g, const Enemy& e) {
   const int s = e.size;                    // v0.2.0：BOSS/普通逐关尺寸
   const int x = (int)e.x - s / 2, y = (int)e.y - s / 2;
 
@@ -450,7 +450,7 @@ static void drawEnemy(M5GFX* g, const Enemy& e) {
 }
 
 // ── 命中/爆炸闪光：扩散空心方框，4~5 帧消失（kind1=橙溅射 kind2=治疗）─
-static void drawFx(M5GFX* g, const Fx& f) {
+static void drawFx(Gfx* g, const Fx& f) {
   int r = (4 - f.lifeFrames) * 5 + 4;
   if (f.kind == 1) {                       // 溅射：双层方框，更大
     g->drawRect((int)f.x - r, (int)f.y - r, r * 2, r * 2, C_SPLASH);
@@ -490,7 +490,7 @@ static void drawFx(M5GFX* g, const Fx& f) {
 }
 
 // ── 擦除脏格子（把上一帧的实体痕迹恢复成地图底色）────────────────
-static void eraseDirty(M5GFX* g) {
+static void eraseDirty(Gfx* g) {
   for (int r = 0; r < MAP_ROWS; ++r)
     for (int c = 0; c < COLS; ++c) {
       if (!g_w.dirty[c][r]) continue;
@@ -511,7 +511,7 @@ static int16_t g_panelX = 0, g_panelY = 0;
 // 重画面板或关面板时先把该盒子区域刷回底色 + 补画区内塔。
 static int16_t g_rbX0=-1, g_rbY0=0, g_rbX1=-1, g_rbY1=0;
 
-static void eraseRangeBox(M5GFX* g) {
+static void eraseRangeBox(Gfx* g) {
   if (g_rbX1 < 0) return;
   // ⚠️ v0.2.1：预览框会伸进 HUD 带（塔在第一行、射程 > MAP_TOP）和建造栏。
   //   地图格补画管不到这两条带 → 顶部黑底残留（真机 bug #5）。
@@ -561,7 +561,7 @@ static inline void panelBtnRects(int* upX, int* upY, int* sellX, int* sellY) {
   *sellY = g_panelY + PBTN_UP_Y;
 }
 
-static void drawTowerPanel(M5GFX* g, const Tower& t) {
+static void drawTowerPanel(Gfx* g, const Tower& t) {
   eraseRangeBox(g);                                 // v0.2.1：先擦旧预览框（升级换半径场景）
 
   // 贴在塔的右侧；放不下就翻到左侧 / 夹紧到屏内
@@ -660,7 +660,7 @@ static void drawTowerPanel(M5GFX* g, const Tower& t) {
 }
 
 // ── 关闭面板：把盖住的地图格补回底色，塔重画（残留敌人由脏格机制自愈）
-static void closeTowerPanel(M5GFX* g) {
+static void closeTowerPanel(Gfx* g) {
   if (!g_panelOpen && g_rbX1 < 0) return;
   // v0.2.1：先擦射程预览框（它会伸到面板外，光靠补画面板盖不住）
   eraseRangeBox(g);
@@ -687,7 +687,7 @@ static void closeTowerPanel(M5GFX* g) {
 }
 
 // ── 每帧渲染主体：擦脏格 → 塔 → 敌人 → 子弹 → 特效 ──────────────
-static void renderFrame(M5GFX* g) {
+static void renderFrame(Gfx* g) {
   // v0.4.2：标题界面是静态屏（真机 loop 在 ST_TITLE 直接 return，永不进来）。
   // 这里是防御性早退：万一别的路径调到 renderFrame，也不会把世界/HUD
   // 画到标题界面上（仿真曾因此把上一局 HUD 混进标题帧截图）。
@@ -732,7 +732,7 @@ static void renderFrame(M5GFX* g) {
 }
 
 // ── 建造反馈：合法=绿闪，非法（路径/占用/缺金币）=红叉 ────────────
-static void flashCell(M5GFX* g, int col, int row, bool ok) {
+static void flashCell(Gfx* g, int col, int row, bool ok) {
   const int x = col * CELL, y = MAP_TOP + row * CELL;
   if (ok) {
     g->drawRect(x, y, CELL, CELL, C_HP_FULL);
@@ -748,7 +748,7 @@ static void flashCell(M5GFX* g, int col, int row, bool ok) {
 // ── Game Over：盖一层半透明感的深色块 + 大字，点击任意处重开 ──────
 // v0.4.1：压暗点阵从 2x2@4px 步进（57,600 次 fillRect，约百毫秒卡顿）
 // 改 4x4@8px 步进（14,400 次）——25% 覆盖率不变，像素风下肉眼无差。
-static void drawGameOver(M5GFX* g) {
+static void drawGameOver(Gfx* g) {
   // 用稀疏暗块模拟半透明压暗（无 alpha，保持纯矩形）
   for (int y = MAP_TOP; y < SCREEN_H; y += 8)
     for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
@@ -773,7 +773,7 @@ static void drawGameOver(M5GFX* g) {
 
 // ── 星星（v0.3.0）：5×7 像素五角星的矩形近似 —— 三块菱形拼出尖角 ──
 // size=1 → 约 20px；size=2 → 40px。纯 fillRect，无字体依赖。
-static void drawStar(M5GFX* g, int cx, int cy, int size, uint16_t c) {
+static void drawStar(Gfx* g, int cx, int cy, int size, uint16_t c) {
   const int u = size;                       // 单元像素
   g->fillRect(cx - u / 2, cy - u * 3 / 2, u, u * 3, c);        // 竖干
   g->fillRect(cx - u * 3 / 2, cy - u / 2, u * 3, u, c);         // 横干
@@ -782,7 +782,7 @@ static void drawStar(M5GFX* g, int cx, int cy, int size, uint16_t c) {
 }
 
 // 一行 n 颗星（filled=点亮数），居中于 cx。返回整行宽度
-static int drawStarRow(M5GFX* g, int cx, int cy, int n, int filled, int size) {
+static int drawStarRow(Gfx* g, int cx, int cy, int n, int filled, int size) {
   const int step = size * 3 + 8;
   const int x0 = cx - (step * n) / 2 + step / 2;
   for (int i = 0; i < n; ++i) {
@@ -794,7 +794,7 @@ static int drawStarRow(M5GFX* g, int cx, int cy, int n, int filled, int size) {
 
 // ── v0.3.1 静音按钮：喇叭方块+号角口，纯矩形；静音=红斜杠 ─────────
 // ⚠️ 必须先于 drawLevelSelect 定义（头文件顺序编译，无原型不可前向调用）
-static void drawMuteBtn(M5GFX* g) {
+static void drawMuteBtn(Gfx* g) {
   const int x = MUTE_BTN_X, y = MUTE_BTN_Y;
   g->fillRect(x, y, MUTE_BTN_W, MUTE_BTN_H, C_UI_BG);
   g->drawRect(x, y, MUTE_BTN_W, MUTE_BTN_H, s_muted ? C_BAD : C_GRASS_EDGE);
@@ -811,7 +811,7 @@ static void drawMuteBtn(M5GFX* g) {
 }
 
 // ── 单个选关节点（v0.4.1 从 drawLevelSelect 抽出，供锁关反馈自擦复用）──
-static void drawSelNode(M5GFX* g, int i) {
+static void drawSelNode(Gfx* g, int i) {
   const int x = selNodeX(i), y = selNodeY(i);
   const bool unlocked = levelUnlocked(i);
   const bool cleared  = levelCleared(i);        // v0.2.0：通关位图真源 game.h
@@ -846,7 +846,7 @@ static void drawSelNode(M5GFX* g, int i) {
 }
 
 // ── 关卡选择（v0.2.0）：5×2 节点图，锁定=灰+锁，通关=金，当前=绿框 ─
-static void drawLevelSelect(M5GFX* g) {
+static void drawLevelSelect(Gfx* g) {
   g->fillScreen(C_BG);
   px_textCenter(g, SCREEN_W / 2, 36, TR(STR_SELECT), C_TEXT, 4);
 
@@ -860,7 +860,7 @@ static void drawLevelSelect(M5GFX* g) {
 }
 
 // ── 通关画面（v0.2.0）：金色战报，点击回选关 ─────────────────────
-static void drawLevelClear(M5GFX* g) {
+static void drawLevelClear(Gfx* g) {
   for (int y = MAP_TOP; y < SCREEN_H; y += 8)
     for (int x = 0; x < SCREEN_W; x += 8) g->fillRect(x, y, 4, 4, C_BG);
 
@@ -917,7 +917,7 @@ static void drawLevelClear(M5GFX* g) {
 // （几何宏已前置到文件头，供 drawLevelClear 使用）
 
 // 彩虹像素字：逐字母循环取色（先画 6px 黑色投影，再画彩色本体）
-static void drawRainbow(M5GFX* g, int cx, int y, const char* s, int scale,
+static void drawRainbow(Gfx* g, int cx, int y, const char* s, int scale,
                         const uint16_t* cols, int ncol) {
   const int adv = (FONT_W + 1) * scale;
   const int w = px_textWidth(s, scale);
@@ -933,7 +933,7 @@ static void drawRainbow(M5GFX* g, int cx, int y, const char* s, int scale,
   }
 }
 
-static void drawTitle(M5GFX* g) {
+static void drawTitle(Gfx* g) {
   g->fillScreen(C_BG);
 
   // 像素星空：确定性伪随机点（坐标哈希，不用随机库——构建可复现）
@@ -1016,7 +1016,7 @@ static void drawTitle(M5GFX* g) {
 
 // ── v0.4.2 首次引导 overlay：三步教学（actions.h 推进）────────────
 // NVS "onboarded" 记住已完成；之后永不弹出（老玩家不被教程骚扰）。
-static void drawOnboard(M5GFX* g, int step) {
+static void drawOnboard(Gfx* g, int step) {
   const char* s = (step == 1) ? TR(STR_ONBOARD_1) :
                   (step == 2) ? TR(STR_ONBOARD_2) : TR(STR_ONBOARD_3);
   const int bw = 820, bh = 130;
@@ -1037,7 +1037,7 @@ static void drawOnboard(M5GFX* g, int step) {
 
 // ── v0.4.2 SIEGE 封锁区渲染：闪烁红框 + 井字封号 ──────────────────
 // 几何与 game.h siegeBlocksPx 同源（g_w.siegeX/Y/R）。
-static void drawSiege(M5GFX* g) {
+static void drawSiege(Gfx* g) {
   if (g_w.siegeMs == 0) return;
   const int x0 = (int)g_w.siegeX - g_w.siegeR, y0 = (int)g_w.siegeY - g_w.siegeR;
   const int w = g_w.siegeR * 2;

@@ -1,7 +1,13 @@
 name: sim
 
-# 门禁：PC 仿真（编译真固件源码）+ 三个确定生成物的漂移检查 + 中文字库的语义覆盖检查。
+# 门禁：PC 仿真（编译真固件源码）+ 生成物的漂移检查 + 中文字库的语义覆盖检查。
 # 仿真是本项目唯一的自动化测试（真机不便接入 CI），任何 PR 不得让它变红。
+#
+# v0.5.0（Claw4 移植）：仿真从 1 个 profile 扩到 2 个。
+#   · tab5  = 1280x720（M5Stack Tab5，原生目标）——门禁状态与 v0.4.x 完全一致
+#   · claw4 = 720x720 （nologotech Metalio Claw4）——新平台，允许有红灯，
+#              但必须**锁住基线**：一旦失败数增加，CI 变红。
+#   两边跑的是同一份 src/*.h，只差 build/<profile>/config_gen.h。
 on:
   push:
     branches: [main]
@@ -13,16 +19,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: PC simulator — real firmware sources, all assertions
+      # ── 生成：两个 profile 各出一份 config_gen.h ──────────────────
+      - name: generate config_gen.h for all profiles
         run: |
-          g++ -std=c++17 -O2 -I sim/compat -I src sim/run.cpp -o sim/sim
-          ./sim/sim
+          python3 tools/layout.py --no-preview
+          python3 tools/layout.py --profile claw4 --no-preview
 
-      # 单一真源纪律：改生成器必须重新生成，且生成结果必须入库
-      - name: config_gen.h must match tools/layout.py
+      # ── tab5 仿真（门禁状态与 v0.4.x 相同：0 failed 才绿）──────────
+      - name: PC simulator [tab5] — real firmware sources, all assertions
         run: |
-          python3 tools/layout.py
-          git diff --exit-code src/config_gen.h
+          g++ -std=c++17 -O2 -I build/tab5 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_tab5
+          ./sim/sim_tab5
+
+      # ── claw4 仿真（锁定基线：当前 276 passed / 15 failed）──────────
+      # 这15 项是已登记的待修 UI 几何与数值配平问题，见 移植工作日志.md。
+      # 断言数只增不减（新增功能会加断言），失败数只减不增（修好一个降一个）。
+      # 数量写死在下面，改基线时要同步改这里并写清理由。
+      - name: PC simulator [claw4] — baseline lock (276 passed / 15 failed)
+        run: |
+          g++ -std=c++17 -O2 -I build/claw4 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_claw4
+          out=$(./sim/sim_claw4)
+          echo "$out" | tail -30
+          total=$(echo "$out" | grep -oP 'RESULT: \K[0-9]+' || echo 0)
+          failed=$(echo "$out" | grep -oP 'RESULT: [0-9]+ passed, \K[0-9]+' || echo 0)
+          # 断言总数基线（新增断言时手动上调，并说明原因）
+          [ "$total" -ge 291 ] || { echo "assert count dropped: $total < 291"; exit 1; }
+          # 失败数基线：只允许不增
+          [ "$failed" -le 15 ] || { echo "claw4 failures grew: $failed > 15"; exit 1; }
+          echo "claw4 baseline OK: $total passed, $failed failed"
+
+      # ── 单一真源纪律：改生成器必须重新生成，且生成结果必须入库 ──────
+      # v0.5.0：路径从 src/config_gen.h 改为 build/<profile>/config_gen.h
+      - name: config_gen.h must match tools/layout.py (tab5)
+        run: git diff --exit-code build/tab5/config_gen.h
+
+      - name: config_gen.h must match tools/layout.py (claw4)
+        run: git diff --exit-code build/claw4/config_gen.h
 
       - name: pixel_font.h must match tools/gen_font.py
         run: |
@@ -44,5 +76,4 @@ jobs:
       # 字节一致性是维护机纪律：改 i18n.h 中文 → 用同一字体重跑 gen_cnfont.py
       # → git diff 必须为空（本检查纯 stdlib，无需 Pillow）。
       - name: cn_font.h must cover every non-ASCII char in i18n.h
-        run: |
-          python3 tools/check_cnfont.py
+        run: python3 tools/check_cnfont.py

@@ -8,14 +8,14 @@
 //   中文固定 16x16（不随 scale 放大）：与 scale3 的 ASCII（15x21）高度协调，
 //   且汉字笔画密，放大会糊。混排宽度 = 17px/字（含 1px 缝）。
 #pragma once
-#include <M5GFX.h>
+#include "gfx.h"
 #include "pixel_font.h"
 #include "cn_font.h"
 
 // scale=2 → 10x14 px；scale=3 → 15x21 px。Tab5 是 720p，字要放大才够远看清
 // v0.4.1：行内连续置位合并成一次 fillRect（RLE）——输出像素与逐列画完全
 // 一致，但 HUD/面板大量文字的场景 fillRect 调用数降约 2/3。
-static inline void px_char(M5GFX* g, int x, int y, char ch, uint16_t c, int scale) {
+static inline void px_char(Gfx* g, int x, int y, char ch, uint16_t c, int scale) {
   const uint8_t* rows;
   if (ch == '\x01')      rows = FONT_HEART;   // ♥
   else if (ch == '\x02') rows = FONT_BLOCK;   // █
@@ -57,7 +57,7 @@ static inline const uint8_t* cnGlyphRows(const char* s) {
 }
 
 // 与 px_char 同款 RLE 合并（每行 16 位 = 两字节拼）
-static inline void px_cnChar(M5GFX* g, int x, int y, const char* s, uint16_t c) {
+static inline void px_cnChar(Gfx* g, int x, int y, const char* s, uint16_t c) {
   const uint8_t* rows = cnGlyphRows(s);
   if (!rows) return;
   for (int r = 0; r < CN_FONT_H; ++r) {
@@ -76,7 +76,7 @@ static inline void px_cnChar(M5GFX* g, int x, int y, const char* s, uint16_t c) 
 #define CN_ADV (CN_FONT_W + 1)             // 中文字间距（同 ASCII 留 1px 缝）
 
 // 返回绘制后的 x（便于链式排版）；遇到未映射字符按空格跳过
-static inline int px_text(M5GFX* g, int x, int y, const char* s,
+static inline int px_text(Gfx* g, int x, int y, const char* s,
                           uint16_t c, int scale) {
   const int adv = (FONT_W + 1) * scale;          // 字间留 1 像素缝，更像点阵
   while (*s) {
@@ -101,7 +101,7 @@ static inline int px_textWidth(const char* s, int scale) {
   return w ? w - scale : 0;                 // 去掉最后一个字间缝
 }
 
-static inline void px_textCenter(M5GFX* g, int cx, int y, const char* s,
+static inline void px_textCenter(Gfx* g, int cx, int y, const char* s,
                                  uint16_t c, int scale) {
   px_text(g, cx - px_textWidth(s, scale) / 2, y, s, c, scale);
 }

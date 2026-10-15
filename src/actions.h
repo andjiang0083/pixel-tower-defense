@@ -34,7 +34,7 @@ static bool   g_onboarded  = false;
 #define ONBOARD_H 130
 
 // ── 重开/初始化后的强制 UI 全量刷新（renderFrame 的缓存归零）────
-static void refreshAllUI(M5GFX* d) {
+static void refreshAllUI(Gfx* d) {
   resetRenderCaches();          // render.h：建造栏/按钮静态缓存失效
   drawBackground(d);
   drawBuildBar(d);
@@ -48,7 +48,7 @@ static void refreshAllUI(M5GFX* d) {
 // 覆盖区域内**没有实体经过的地方就再也擦不掉**——玩家看到的就是
 // 教程结束后画面残留一块，走到哪都不刷新。
 // → 关闭 overlay（step 归零）时必须整屏重建，把压暗块一次性清掉。
-static void redrawAll(M5GFX* d) {
+static void redrawAll(Gfx* d) {
   refreshAllUI(d);
   // refreshAllUI 只画静态 UI，实体要补画（与 renderFrame 的顺序一致）
   for (int i = 0; i < MAX_TOWERS; ++i)  if (g_w.towers[i].active)  drawTower(d, g_w.towers[i]);
@@ -67,7 +67,7 @@ static int hitSelNode(int x, int y) {
 }
 
 // ── 进入某关（解锁校验在这里，唯一入口）──────────────────────────
-static bool enterLevel(M5GFX* d, int idx) {
+static bool enterLevel(Gfx* d, int idx) {
   if (idx < 0 || idx >= LEVEL_COUNT || !levelUnlocked(idx)) return false;
   levelLoad(idx);
   g_buildFx = {-1, -1, 0, false};
@@ -83,7 +83,7 @@ static bool enterLevel(M5GFX* d, int idx) {
 
 // ── v0.4.2：进入无尽模式（L10 通关画面入口）──────────────────────
 // ⚠️ g_w.endless 必须在 enterLevel 之后设：levelLoad 会 memset 清零它。
-static bool enterEndless(M5GFX* d) {
+static bool enterEndless(Gfx* d) {
   if (!enterLevel(d, LEVEL_COUNT - 1)) return false;
   g_w.endless = 1;
   g_w.gold = START_GOLD;             // 标准经济起手（不搞 Infinite 宽容）
@@ -91,7 +91,7 @@ static bool enterEndless(M5GFX* d) {
 }
 
 // ── 一次点击的全部规则。返回 true = 世界状态发生了变化 ─────────────
-static bool handleTap(M5GFX* d, const Tap& t) {
+static bool handleTap(Gfx* d, const Tap& t) {
   if (!t.valid) return false;
 
   // ── v0.4.2：引导 overlay 打开时，对话框内点击=推进下一步 ────────
@@ -215,7 +215,7 @@ static bool handleTap(M5GFX* d, const Tap& t) {
 }
 
 // ── 每帧推进建造反馈动画；结束后把该格擦回底色（有塔则连塔重画）──
-static void updateBuildFx(M5GFX* d) {
+static void updateBuildFx(Gfx* d) {
   if (g_buildFx.lifeFrames == 0) return;
 
   flashCell(d, g_buildFx.col, g_buildFx.row, g_buildFx.ok);
@@ -230,7 +230,7 @@ static void updateBuildFx(M5GFX* d) {
 }
 
 // ── 选关锁定反馈：红叉闪 20 帧后重画该节点自擦（v0.4.1 修残留）────
-static void updateSelFx(M5GFX* d) {
+static void updateSelFx(Gfx* d) {
   if (g_selFx.lifeFrames == 0) return;
   if (--g_selFx.lifeFrames == 0) {             // 收尾：节点原样重画，红叉无痕
     drawSelNode(d, g_selFx.node);
@@ -245,7 +245,7 @@ static void updateSelFx(M5GFX* d) {
 }
 
 // ── Game Over / Level Clear：只在第一次进入时画覆盖层 ─────────────
-static void updateOverlays(M5GFX* d) {
+static void updateOverlays(Gfx* d) {
   if (g_w.state == ST_GAMEOVER && !g_overDrawn) { drawGameOver(d); g_overDrawn = true; }
   if (g_w.state == ST_CLEAR  && !g_clearDrawn) { drawLevelClear(d); g_clearDrawn = true; }
 }
