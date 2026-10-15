@@ -985,14 +985,27 @@ static void drawLevelClear(Gfx* g) {
 // ── v0.4.2 标题界面 ───────────────────────────────────────────────
 // 开机第一屏：像素大标题 + 版本 + 语言选择（EN/中文，NVS 记忆）+ 点击开始。
 // 语言按钮几何（render 画 / actions 命中，唯一真源同 MUTE_BTN 惯例）
-#define LANG_BTN_Y  330
-#define LANG_BTN_H  56
-#define LANG_EN_X   430
-#define LANG_CN_X   650
-#define LANG_BTN_W  200
+// v0.5.0（Claw4 720 宽）：按钮组改为**按屏宽比例 + 整体居中**。
+// 原版写死 EN_X=430 / CN_X=650 / W=200 → 右缘 850，720 屏上中文按钮
+// 整个在屏外（真机截图里只看到 ENGLISH 一个）。
+//
+// 布局规则：按钮宽 = 屏宽 × 15.6%（1280 → 200，与原值逐像素一致），
+// 组宽 = 2×W + 间距，整体居中。间距也按屏宽比例，保证任何宽度都居中。
+// 按钮宽：1280 屏上必须精确 = 200（原值），所以用 1280 为基准的比例。
+// gap = 20（原版 650-430-200 = 20，不是 24 —— 之前算错过一次）。
+// 1280 屏：W=200（原值）。窄屏不能等比缩到 112（"ENGLISH" 会很挤），
+// 改为**占屏宽 30%**（720 → 216），两个按钮 + 间距正好占 67%，居中后
+// 左右各留 ~119px，与标题两行文字的视觉宽度匹配。
+#define LANG_BTN_W   (SCREEN_W >= 1024 ? ((SCREEN_W * 200) / 1280) : (SCREEN_W * 3 / 10))
+#define LANG_BTN_GAP (SCREEN_W >= 1024 ? 20 : 16)
+#define LANG_BTN_Y   (SCREEN_W >= 1024 ? 330 : 336)
+#define LANG_BTN_H   56
+#define LANG_GRP_X   ((SCREEN_W - 2 * LANG_BTN_W - LANG_BTN_GAP) / 2)
+#define LANG_EN_X    (LANG_GRP_X)
+#define LANG_CN_X    (LANG_GRP_X + LANG_BTN_W + LANG_BTN_GAP)
 // v0.4.3：LANGUAGE/语言 标签居中在按钮组上方。y 命名化，仿真断言守着
 // "标签底边（含 16px 中文点阵）不得贴到按钮顶边"。
-#define TITLE_LANG_LBL_Y 302
+#define TITLE_LANG_LBL_Y (SCREEN_W >= 1024 ? 302 : 312)
 
 // v0.4.2：无尽模式入口按钮（L10 通关画面面板下方；actions 命中共用）
 // （几何宏已前置到文件头，供 drawLevelClear 使用）
@@ -1047,7 +1060,11 @@ static void drawTitle(Gfx* g) {
     if (cur) g->drawRect(bx + 3, LANG_BTN_Y + 3, LANG_BTN_W - 6, LANG_BTN_H - 6, C_GOLD);
     // v0.4.3：按钮标签走 TR——显示"目标语言"名（EN 模式：ENGLISH/中文；
     // CN 模式：英文/中文）。硬编码会让字库漏收（见 i18n.h 头注教训）。
-    const char* label = (i == LANG_EN) ? TR(STR_LANG_EN) : TR(STR_LANG_CN);
+    // v0.5.0：语言按钮的标签是"该语言自己的名字"，必须**绕开窄屏降级**。
+    // 窄屏把中文整体降级掉时，用 TR() 取 STR_LANG_CN 会拿到空串——
+    // 真机症状：ENGLISH 按钮有字，旁边中文按钮只剩一个空框。
+    // 所以这里直接查表，不经过 langCN() 的窄屏判断。
+    const char* label = (i == LANG_EN) ? STR_EN[STR_LANG_EN] : STR_EN[STR_LANG_CN];
     px_textCenter(g, bx + LANG_BTN_W / 2, LANG_BTN_Y + 20, label,
                   cur ? C_TEXT : C_TEXT_DIM, 2);
   }
@@ -1056,11 +1073,15 @@ static void drawTitle(Gfx* g) {
   // 居中放置同时解决"按钮位置随语言宽度跳动"（固定左缘的方案会跳）。
   px_textCenter(g, SCREEN_W / 2, TITLE_LANG_LBL_Y, TR(STR_LANG), C_TEXT_DIM, 2);
 
-  // 装饰带：几座塔剪影 + 小兵 + 地面线（全部矩形，复用塔的配色语言）
-  const int gy = 500;
+  // 装饰带：塔剪影 + 小兵 + 地面线（全部矩形，复用塔的配色语言）
+  // v0.5.0：横坐标从写死的 300/470/640/810/980 与 1120/1030/940/850
+  //   改为**按屏宽等分排布**。原版 1280 屏下 5 个塔占 x[300,1010]，
+  //   720 屏下只出 3 个（810、980 直接超屏）——真机截图正是如此。
+  //   小兵同理：原 x 起于 1120，720 屏下一个都不显示。
+  const int gy = (int)(SCREEN_H * 0.694);      // 500 / 720
   g->fillRect(0, gy + 44, SCREEN_W, 4, C_GRASS_EDGE);
-  for (int i = 0; i < 5; ++i) {                          // 塔剪影（间隔排布）
-    const int tx = 300 + i * 170, ty = gy + 10;
+  for (int i = 0; i < 5; ++i) {                          // 塔剪影（等分排布）
+    const int tx = (int)(SCREEN_W * (0.234 + i * 0.133)), ty = gy + 10;
     const uint16_t col = towerColor(i == 4 ? 4 : i % 4);
     g->fillRect(tx + 8, ty + 18, 24, 22, C_TOWER_BASE);
     g->fillRect(tx + 12, ty + 6, 16, 20, col);
@@ -1070,7 +1091,7 @@ static void drawTitle(Gfx* g) {
     else g->fillRect(tx + 17, ty, 5, 26, col);                       // 枪管
   }
   for (int i = 0; i < 4; ++i) {                          // 小兵剪影（从右向左）
-    const int ex = 1120 - i * 90, ey = gy + 22;
+    const int ex = (int)(SCREEN_W * (0.875 - i * 0.070)), ey = gy + 22;
     g->fillRect(ex, ey, 18, 18, i == 3 ? C_ENEMY_BOSS : (i & 1 ? C_ENEMY_A : C_ENEMY_B));
     g->drawRect(ex, ey, 18, 18, C_BG);
     g->fillRect(ex + 4, ey + 5, 4, 4, C_BG);
