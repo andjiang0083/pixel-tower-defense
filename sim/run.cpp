@@ -1576,6 +1576,30 @@ int main(int argc, char** argv) {
   // 动机：v0.4.2 标题界面 LANGUAGE 标签伸进 ENGLISH 按钮 26px（截图才
   // 发现）。新增界面文字必须在这里补容器断言——比"每次人眼看全套截图"
   // 可靠，且 CI 会跑。
+#if PTD_BG_TILE_BLIT
+  // ── v0.5.3 补：块缓存的"后端整理"必须真的被游戏路径调到 ──────────────
+  //   为什么要有这条：首版把 prepareTile 调在 TileCanvas（Gfx 基类空实现）上，
+  //   交换静默不发生 ⇒ 真机依旧紫色，而当时的设备自检是在 GfxM5 对象上直接调
+  //   （自己造机制自己验）⇒ 假绿灯。仿真用"计数 > 0"把"路径没走到"钉死。
+  {
+    // ⚠️ 必须**换一关**再画：同一关 bgTilesEnsure 会早退（缓存已在），计数不变
+    //   ⇒ 断言假红（第一版就这么写的：探针自己没控制住状态）。
+    // ⚠️ 必须真的走**擦格**（eraseDirty）：drawBackground 是整屏直画、不碰缓存，
+    //   而缓存是在"擦某个脏格"时才建的（第一版只换关+drawBackground ⇒ 计数不动、
+    //   断言假红 —— 探针自己没走对路径，与它要防的那个 bug 是同一类错）。
+    const int before = GfxFb::s_prepCalls;
+    const int other = (g_lv == 0) ? 1 : 0;
+    levelLoad(other);
+    for (int r = 0; r < MAP_ROWS; ++r) for (int c = 0; c < COLS; ++c) g_w.dirty[c][r] = true;
+    eraseDirty(D);                        // 产品路径：块拷贝擦格
+    CHECK(GfxFb::s_prepCalls > before,
+          "块缓存从未交给后端整理（prepareTile 计数 %d->%d 未增）—— 是不是调在基类空实现上了？",
+          before, GfxFb::s_prepCalls);
+    printf("  [bg] 后端整理调用 %d 次（换关重建 %d->%d，块拷贝路径生效）\n",
+           GfxFb::s_prepCalls, before, GfxFb::s_prepCalls);
+  }
+#endif
+
   checkUiTextFit();
 
 #if PTD_HAS_CJK

@@ -145,7 +145,13 @@ static void bgTilesEnsure(Gfx* g) {
 }
 
 // 取（或首次生成）某格的缓存块；返回 nullptr = 调用方走逐矩形路径
+#if PTD_BG_TILE_BLIT
+static const uint16_t* cellTile(Gfx* g, int col, int row) {          // 要后端（交换落它身上）
+#else
+// 无块拷贝能力的板子：签名与 v0.5.2 逐字符相同 ⇒ 预处理输出零差异
+//（函数体里的块拷贝分支本来就被 #if 排掉，g 用不上）
 static const uint16_t* cellTile(int col, int row) {
+#endif
   if (!s_tileBuf || s_tileOff) return nullptr;
   const uint8_t k0 = (uint8_t)((g_w.path[col][row] ? 1 : 0)
                              | (g_w.blocked[col][row] ? 2 : 0)
@@ -164,11 +170,13 @@ static const uint16_t* cellTile(int col, int row) {
   uint16_t* buf = s_tileBuf + (size_t)s_tileN * CELL * CELL;
   TileCanvas tc(buf);
   drawCellBaseAt(&tc, 0, 0, col, row);             // 同一份画法 ⇒ 逐像素相同
-  // 后端整理（如 Tab5 要在块拷贝前把字节序摆正；默认 no-op）
-  // ⚠️ 仿真侧 GfxFb 是 no-op，所以"tile vs 直画逐像素相同"这条断言仍成立：
-  //    整理只改**存储形态**，pushImage 出去的像素与直画一致（设备自检 BLITCHK 守着）。
+  // ⚠️⚠️ 整理必须落在 **显示后端 g** 上，不能落在 tc 上：tc 是 TileCanvas，
+  //   继承 Gfx 基类 —— 调 tc.prepareTile() 命中的是基类的空实现，交换**静默不发生**。
+  //   v0.5.3 首版就是这样白干的：真机依旧紫色；而当时的设备自检是在 GfxM5 对象上
+  //   直接调 prepareTile（自己造机制自己验），给出 mism=0 的假绿灯。
+  //   教训：探针必须走**产品真实路径**（下面 bgBlitPathCheck 走 eraseDirty）。
 #if PTD_BG_TILE_BLIT
-  tc.prepareTile(buf, (size_t)CELL * CELL);
+  g->prepareTile(buf, (size_t)CELL * CELL);
 #endif
   s_tileKey[s_tileN][0] = k0;
   s_tileKey[s_tileN][1] = k1;
@@ -714,7 +722,7 @@ static void eraseDirty(Gfx* g) {
       if (!g_w.dirty[c][r]) continue;
       g_w.dirty[c][r] = false;
 #if PTD_BG_TILE_BLIT
-      const uint16_t* t = cellTile(c, r);
+      const uint16_t* t = cellTile(g, c, r);
       if (t) { g->pushImage(c * CELL, MAP_TOP + r * CELL, CELL, CELL, t); continue; }
 #endif
       drawCellBase(g, c, r);          // 退路：缓存不可用（分配失败/变体超限/仿真 A/B）
@@ -1235,7 +1243,7 @@ static void drawTitle(Gfx* g) {
 #endif
 
   // 版本号（金色，v0.4.3 起每次发版手改这里 + banner + publish.yaml）
-  char vb[24]; strcpy(vb, "v0.5.3");
+  char vb[24]; strcpy(vb, "v0.5.4");
   px_textCenter(g, SCREEN_W / 2, TITLE_VER_Y, vb, C_GOLD, 3);
 
 #if PTD_HAS_CJK

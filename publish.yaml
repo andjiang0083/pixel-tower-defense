@@ -6,8 +6,8 @@ platform_entries:
   - name: PIXEL TOWER DEFENSE
     device: Tab5
     category: Games
-    version: "0.4.3"
-    bin: releases/pixel-tower-defense-v0.4.3-tab5-merged.bin
+    version: "0.5.4"
+    bin: releases/pixel-tower-defense-v0.5.4-tab5-merged.bin
     cover: releases/cover-1280x720-pixel-tower-defense-tab5.png
     project_link: "https://github.com/andjiang0083/pixel-tower-defense"
-    readback: 2026-10-12 PENDING vid=2109325922863968258
+    readback: 2026-10-17 PENDING vid=待填（v0.5.4 已提交，见会话记录）

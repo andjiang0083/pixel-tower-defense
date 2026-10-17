@@ -147,6 +147,34 @@ static void titleInkCheck(void) {
   setLang(keep); drawTitle(&g_disp);
 }
 
+// ── 产品真实路径自检：走 eraseDirty 的块拷贝，逐像素对比"直画" ──────────
+//  为什么不能只测 pushImage 机制（BLITCHK 干的活）：首版把 prepareTile 调在
+//  TileCanvas（Gfx 基类空实现）上，机制测试全绿、真机依旧紫色。这条走的是
+//  游戏擦格那条路（eraseDirty → cellTile → 显示后端 pushImage），选一个"路"格
+//  —— 症状正好出现在敌人走过的路上。
+static void bgBlitPathCheck(void) {
+  int pc = -1, pr = -1;
+  for (int r = 0; r < MAP_ROWS && pc < 0; ++r)
+    for (int c = 0; c < COLS; ++c) if (g_w.path[c][r]) { pc = c; pr = r; break; }
+  if (pc < 0) { Serial.println("BGPATH 无路格，跳过"); return; }
+  const int X = pc * CELL, Y = MAP_TOP + pr * CELL;
+  eraseDirty(&g_disp);                     // 先建缓存（无脏格则缓存未建）
+  g_w.dirty[pc][pr] = true;
+  eraseDirty(&g_disp);                     // ← 产品路径：一次 pushImage 块拷贝
+  static uint16_t got[CELL * CELL], ref[CELL * CELL];
+  for (int y = 0; y < CELL; ++y)
+    for (int x = 0; x < CELL; ++x) got[y * CELL + x] = g_disp.readPixel(X + x, Y + y);
+  drawCellBaseAt(&g_disp, X, Y, pc, pr);   // 参考：同一格子的直画
+  for (int y = 0; y < CELL; ++y)
+    for (int x = 0; x < CELL; ++x) ref[y * CELL + x] = g_disp.readPixel(X + x, Y + y);
+  int bad = 0, fx = -1, fy = -1; uint16_t e = 0, gv = 0;
+  for (int i = 0; i < CELL * CELL; ++i)
+    if (got[i] != ref[i]) { if (!bad) { fx = i % CELL; fy = i / CELL; e = ref[i]; gv = got[i]; } ++bad; }
+  Serial.printf("BGPATH 路格(%d,%d) 块拷贝vs直画 mism=%d/%d first=(%d,%d) exp=%04X got=%04X\n",
+                pc, pr, bad, CELL * CELL, fx, fy, e, gv);
+  g_w.dirty[pc][pr] = true;                // 让正常帧修回来
+}
+
 static void blitSelfCheck(void) {
   const int N = 8;
   static uint16_t pat[64];
@@ -211,6 +239,7 @@ static void perfLoadTick(void) {
 #if PTD_BG_TILE_SELFCHECK
     blitSelfCheck();
     titleInkCheck();
+    bgBlitPathCheck();
 #endif
     Serial.printf("PERF build=PROBE spawn=%d towers=%d maxEnemies=%d capTowers=%d\n",
                   (int)PTD_PERF_SPAWN, (int)PTD_PERF_TOWERS, (int)MAX_ENEMIES, (int)MAX_TOWERS);
@@ -340,7 +369,7 @@ void setup(void) {
   M5.begin(cfg);
   M5.Display.setRotation(3);              // Tab5 横屏 1280x720
 
-  Serial.printf("=== PIXEL TOWER DEFENSE v0.5.3 | board=%d | %dx%d ===\n",
+  Serial.printf("=== PIXEL TOWER DEFENSE v0.5.4 | board=%d | %dx%d ===\n",
                 (int)M5.getBoard(), SCREEN_W, SCREEN_H);
 
   // PSRAM 是帧缓冲所在地（DSI video mode）；没有就停下，别黑屏空转

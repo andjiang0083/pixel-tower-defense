@@ -4,7 +4,7 @@ Versions are small patch bumps on purpose: features are merged into a tiny
 version number instead of 1.x.0 jumps. Entries describe what a player can feel,
 not internal refactors.
 
-## v0.5.3 — level 10 stopped choking, and the Chinese UI came back
+## v0.5.4 — level 10 stopped choking, and the Chinese UI came back
 
 **Level 10 no longer snowballs.** On that map the second wave is a small one, and
 the rule for "may the next wave start yet?" was counting *every* enemy on the

@@ -243,6 +243,14 @@ class GfxFb : public Gfx {
   }
 
   // ── 块拷贝（v0.5.3）：行级转换 + 整行 memcpy（PC 仿真与 Claw4 都走这条）──
+  // ⚠️ 仿真侧是 no-op，但**计数**：这是唯一能机判"游戏路径真的把块缓存交给
+  //   后端整理过"的办法。v0.5.3 首版把整理调在 TileCanvas（Gfx 基类空实现）上，
+  //   交换静默不发生 ⇒ 真机依旧紫色，而当时所有测试都是绿的。这条计数就是补丁。
+#if PTD_BG_TILE_BLIT
+  void prepareTile(uint16_t* buf, size_t n) override { (void)buf; (void)n; ++s_prepCalls; }
+  static int s_prepCalls;
+#endif
+
   virtual void pushImage(int32_t x, int32_t y, int32_t ww, int32_t hh,
                          const uint16_t* data) override {
     if (!fb_ || !data || ww <= 0 || hh <= 0) return;
@@ -280,3 +288,8 @@ class GfxFb : public Gfx {
   // 16bpp 视图（PC 侧 PTD_FB_BPP=16 时用；24bpp 下不要调它）
   uint16_t* fb16() const { return (uint16_t*)fb_; }
 };
+#if PTD_BG_TILE_BLIT
+int GfxFb::s_prepCalls = 0;   // 见 prepareTile 覆写
+#endif
+
+
