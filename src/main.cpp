@@ -68,6 +68,119 @@ static int8_t s_lastOnboardStep = 0;
 #ifndef PTD_PERF_PROBE
 #define PTD_PERF_PROBE 0
 #endif
+#ifndef PTD_BG_TILE_SELFCHECK
+#define PTD_BG_TILE_SELFCHECK 0   // 1 = 开机跑一次块拷贝字节序自检（只在探针档用）
+#endif
+
+#if PTD_PERF_PROBE && PTD_BG_TILE_SELFCHECK
+// ── 块拷贝字节序自检（已知输入 → 读回）──────────────────────────────
+//  仿真（GfxFb）有自己的 16bpp 约定，**验不了 M5GFX 的转换** ⇒ 这条只能在设备上跑：
+//  用 4 个已知颜色拼 8x8 图案 → ① fillRect 画一遍（参考：这条路颜色一直是对的）
+//  ② 各候选 pushImage 形态各画一遍 → readPixel 逐点读回比对。
+//  ⚠️ 参考自己也自证：参考读回与送进去的图案不一致 ⇒ readPixel 不可用，整轮作废。
+// ── 双语标题上屏自检（已知输入 → 读回）────────────────────────────
+//  仿真只能证明"渲染层把中文写进了帧缓冲"，证不了**面板上真的出现了笔画**
+//  （字库/后端/驱动任一层出问题都可能只画出一片空框）。真机按同法自检：
+//  · 中文模式：副标题带（"像素塔防"）必须有墨迹，且**列簇数 = 4**（= 4 个字形）
+//  · 两种模式：当前语言的按钮必须有金色高亮，另一种必须没有
+// 颜色比对：两边都是**调色板里的 RGB565**（config_gen.h: C_GOLD=0xFE69 这类），
+//   逐场比、容差 2/3/2 位。
+//   ⚠️ 这里踩过两次坑，都记在这：① 用"通道窗口"猜颜色 ⇒ 把金当成灰，全 0；
+//      ② 把调色板值当 RGB888 再换算 ⇒ 期望值算成 0x07ED，而屏上读回就是 0xFE69。
+//      两次都是**探针自己错**、看起来却像"产品坏了"。教训：确定底色先用
+//      "画已知色 → 读回原始值"自证，别在探针里做任何颜色换算。
+static bool nearColor(uint16_t c, uint16_t want) {
+  const int r = (c >> 11) & 0x1F, g = (c >> 5) & 0x3F, b = c & 0x1F;
+  const int er = (want >> 11) & 0x1F, eg = (want >> 5) & 0x3F, eb = want & 0x1F;
+  return (r - er <= 2 && er - r <= 2) && (g - eg <= 3 && eg - g <= 3)
+      && (b - eb <= 2 && eb - b <= 2);
+}
+static int inkClusters(int x0, int x1, int y0, int y1, int* inkOut) {
+  int ink = 0, clusters = 0; bool prev = false;
+  for (int x = x0; x < x1; ++x) {
+    bool any = false;
+    for (int y = y0; y < y1; ++y) {
+      if (nearColor(g_disp.readPixel(x, y), C_GOLD)) { any = true; ++ink; }
+    }
+    if (any && !prev) ++clusters;
+    prev = any;
+  }
+  *inkOut = ink;
+  return clusters;
+}
+static void titleInkCheck(void) {
+  // ── 探针自证①：先在同一块区域直接用 fillRect 画金色，读回必须 >0 ──
+  //    这一条为 0 ⇒ "读不到"是读数/区域问题，后面的 0 一律不作数（别把探针的错
+  //    当成产品的错 —— 反过来也一样）。
+  g_disp.fillRect(LANG_EN_X, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, C_GOLD);
+  int ctl = 0;
+  for (int y = LANG_BTN_Y; y < LANG_BTN_Y + LANG_BTN_H; ++y)
+    for (int x = LANG_EN_X; x < LANG_EN_X + LANG_BTN_W; ++x)
+      if (nearColor(g_disp.readPixel(x, y), C_GOLD)) ++ctl;
+  Serial.printf("TITLEINK ctl_gold=%d (0 => 该区域读回不可用，下面的 0 不作数)\n", ctl);
+  const uint8_t keep = g_lang;
+  for (int li = 0; li < PTD_LANG_COUNT; ++li) {
+    setLang((uint8_t)li); drawTitle(&g_disp);
+    int subInk = 0;
+    const int subCl = inkClusters(SCREEN_W / 2 - 90, SCREEN_W / 2 + 90,
+                                  TITLE_CN_SUB_Y, TITLE_CN_SUB_Y + CN_FONT_H, &subInk);
+    auto goldIn = [&](int x0) {
+      int n = 0;
+      for (int y = LANG_BTN_Y; y < LANG_BTN_Y + LANG_BTN_H; ++y)
+        for (int x = x0; x < x0 + LANG_BTN_W; ++x) {
+          if (nearColor(g_disp.readPixel(x, y), C_GOLD)) ++n;
+        }
+      return n;
+    };
+    const int gEn = goldIn(LANG_EN_X), gCn = goldIn(LANG_CN_X);
+    const uint16_t s0 = g_disp.readPixel(LANG_EN_X, LANG_BTN_Y);            // 按钮边框左上角
+    const uint16_t s1 = g_disp.readPixel(LANG_EN_X + 1, LANG_BTN_Y + 1);    // 边框内一圈
+    const uint16_t s2 = g_disp.readPixel(LANG_EN_X + LANG_BTN_W / 2,
+                                         LANG_BTN_Y + 20);                  // 文字中心
+    const uint16_t s3 = g_disp.readPixel(6, 6);                             // 左上星空
+    Serial.printf("TITLEINK lang=%s sub_ink=%d clusters=%d gold_en=%d gold_cn=%d"
+                  " raw=%04X,%04X,%04X,%04X gold565=%04X\n",
+                  li == LANG_CN ? "CN" : "EN", subInk, subCl, gEn, gCn,
+                  s0, s1, s2, s3,
+                  (unsigned)C_GOLD);   // 调色板本就是 565，直接印，不换算
+  }
+  setLang(keep); drawTitle(&g_disp);
+}
+
+static void blitSelfCheck(void) {
+  const int N = 8;
+  static uint16_t pat[64];
+  const uint16_t cols[4] = { 0xF800 /*红*/, 0x07E0 /*绿*/, 0x001F /*蓝*/, TH().pathA };
+  for (int j = 0; j < N; ++j)
+    for (int i = 0; i < N; ++i) pat[j * N + i] = cols[((i / 2) + (j / 2)) & 3];
+  const int Y0 = 8;
+  for (int j = 0; j < N; ++j)
+    for (int i = 0; i < N; ++i) g_disp.fillRect(i, Y0 + j, 1, 1, pat[j * N + i]);
+  int refBad = 0;
+  for (int j = 0; j < N; ++j)
+    for (int i = 0; i < N; ++i)
+      if (g_disp.readPixel(i, Y0 + j) != pat[j * N + i]) ++refBad;
+  Serial.printf("BLITCHK ref self-test: %d/%d mismatch (readPixel %s)\n",
+                refBad, N * N, refBad ? "UNUSABLE -> check void" : "ok");
+  if (refBad) return;
+  const int vs[3] = { 0, 1, 9 };                 // 9 = 生产路径（prepareTile + pushImage）
+  for (int k = 0; k < 3; ++k) {
+    const int v = vs[k];
+    const int X = 16 + k * 12;
+    g_disp.pushImageVariant(v, X, Y0, N, N, pat);
+    int bad = 0, fx = -1, fy = -1; uint16_t e = 0, got = 0;
+    for (int j = 0; j < N; ++j)
+      for (int i = 0; i < N; ++i) {
+        const uint16_t r = g_disp.readPixel(X + i, Y0 + j);
+        if (r != pat[j * N + i]) { if (!bad) { fx = i; fy = j; e = pat[j * N + i]; got = r; } ++bad; }
+      }
+    Serial.printf("BLITCHK v%d %-18s mism=%2d first=(%d,%d) exp=%04X got=%04X\n",
+                  v, v == 0 ? "plain(2Byte)" : v == 1 ? "selfswap+plain" : "PRODUCTION",
+                  bad, fx, fy, e, got);
+  }
+}
+#endif
+
 #ifndef PTD_PERF_SPAWN
 #define PTD_PERF_SPAWN 0        // 0 = 不造负载（只读探针）
 #endif
@@ -95,6 +208,10 @@ static void perfLoadTick(void) {
     startNextWave();                  // → ST_WAVE
     g_w.toSpawn = 100000;             // 永远"还在刷怪"⇒ 不触发波次完成/压叠逻辑
     g_w.lives   = 999999;             // 不许 game over 打断测量
+#if PTD_BG_TILE_SELFCHECK
+    blitSelfCheck();
+    titleInkCheck();
+#endif
     Serial.printf("PERF build=PROBE spawn=%d towers=%d maxEnemies=%d capTowers=%d\n",
                   (int)PTD_PERF_SPAWN, (int)PTD_PERF_TOWERS, (int)MAX_ENEMIES, (int)MAX_TOWERS);
 #if PTD_PERF_TOWERS > 0
@@ -193,6 +310,9 @@ static void saveProgress(void) {
   s_prefs.putUInt("stars",  packStars(0));
   s_prefs.putUInt("stars2", packStars(10));
   s_prefs.putUChar("mute", s_muted ? 1 : 0);   // v0.3.1：静音偏好
+#if PTD_HAS_CJK
+  s_prefs.putUChar("lang", (uint8_t)g_lang);   // v0.5.3：界面语言（Claw4 单语时不写这个键）
+#endif
   s_prefs.putUChar("onboarded", g_onboarded ? 1 : 0);  // v0.4.2：引导只讲一次
   s_prefs.putUShort("endbest", (uint16_t)g_endBest);   // v0.4.2：无尽最高波次
   s_prefs.end();
@@ -236,6 +356,9 @@ void setup(void) {
   uint32_t packed = s_prefs.getUInt("stars", 0);               // v0.3.0：旧档无此键=0
   uint32_t packed2 = s_prefs.getUInt("stars2", 0);             // v0.4：L11-20
   sfxSetMuted(s_prefs.getUChar("mute", 0) != 0);              // v0.3.1
+#if PTD_HAS_CJK
+  setLang(s_prefs.getUChar("lang", LANG_EN));                 // v0.5.3：界面语言（默认英文）
+#endif
   g_onboarded = s_prefs.getUChar("onboarded", 0) != 0;        // v0.4.2：引导只讲一次
   g_endBest   = (int16_t)s_prefs.getUShort("endbest", 0);     // v0.4.2：无尽最高波次
   s_prefs.end();
@@ -247,8 +370,16 @@ void setup(void) {
   g_w.state = ST_TITLE;               // v0.4.2：开机先进标题界面
   drawTitle(&g_disp);
 
+#if PTD_HAS_CJK
+  // 语言也要印出来：真机排障时"用户看到的是中文还是英文"直接影响判断
+  Serial.printf("unlock=%04X cleared=%04X levels=%d endbest=%d%s\n",
+                g_unlocked, g_cleared, LEVEL_COUNT, (int)g_endBest,
+                langCN() ? " lang=CN" : " lang=EN");
+#else
+  // 单语形态：**逐字符与 v0.5.2 相同**（多一个 "" 实参都会让 claw4 位移，见零位移门禁）
   Serial.printf("unlock=%04X cleared=%04X levels=%d endbest=%d\n",
                 g_unlocked, g_cleared, LEVEL_COUNT, (int)g_endBest);
+#endif
   Serial.println("tap language = switch EN/中文 | tap = start");
 
 

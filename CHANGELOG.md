@@ -4,6 +4,40 @@ Versions are small patch bumps on purpose: features are merged into a tiny
 version number instead of 1.x.0 jumps. Entries describe what a player can feel,
 not internal refactors.
 
+## v0.5.3 — level 10 stopped choking, and the Chinese UI came back
+
+**Level 10 no longer snowballs.** On that map the second wave is a small one, and
+the rule for "may the next wave start yet?" was counting *every* enemy on the
+field. So the third wave was allowed to start while the second one was still
+walking, then the fourth, and so on — the field filled up until the framerate
+collapsed and the game looked frozen. A wave now has to see its *own* enemies
+nearly gone before the next one may overlap it, and level 10 holds a steady
+30 fps.
+
+**The heaviest maps are smoother.** Drawing the ground cost more than 2000
+separate rectangles per frame — the frame budget was going into *calling* the
+renderer rather than into pixels. Each grid cell is now rendered once and
+reused, so clearing a cell is a single blit. On hardware, the worst case went
+from ~24 ms of clearing per frame to ~8 ms, and 48 enemies plus 20 towers on
+screen now hold 30 fps. The temporary cap on how many enemies may be alive at
+once is therefore gone — that cap was hiding the slowdown, not fixing it.
+
+**English / 中文 switching is back on the title screen.** The language buttons
+disappeared in 0.5.0. They are back, the choice is remembered between sessions,
+and every screen is now checked in *both* languages — including a guard that no
+Chinese character can quietly go missing from the generated font.
+
+Player-visible:
+- Level 10: waves no longer pile up into a field-wide freeze.
+- Clearing a cell: one blit instead of ~20 rectangles (measured on the device).
+- Enemy count cap removed — it was masking the slowdown.
+- Title screen: EN / 中文 buttons restored; the choice is saved.
+- Chinese "最高" no longer collides with the "波次" label in endless mode.
+- The Chinese title is drawn from the same string table the font is generated
+  from, so a missing glyph can no longer slip through unnoticed.
+
+Details: `docs/FIXLOG-v0.5.3.md`.
+
 ## v0.4.4 — the sound is back
 
 **Every gun, cannon and explosion now actually makes a noise.** This one was

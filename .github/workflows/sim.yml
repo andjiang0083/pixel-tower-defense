@@ -3,9 +3,11 @@ name: sim
 # 门禁：PC 仿真（编译真固件源码）+ 生成物的漂移检查。
 # 仿真是本项目唯一的自动化测试（真机不便接入 CI），任何 PR 不得让它变红。
 #
-# v0.5.1：删掉 cn_font 的语义覆盖检查——v0.5.0 起移除中文支持，
-#   src/cn_font.h 与 tools/gen_cnfont.py / check_cnfont.py / cn_glyph_rule.py
-#   一并删除（见 i18n.h 头注）。留着就是在查一个不存在的文件的覆盖率。
+# v0.5.3：中文支持按**能力宏 PTD_HAS_CJK**回归（tab5=1 / claw4=0），
+#   cn_font 的语义覆盖检查一并恢复（见下面的 step）。它查的是"源表 vs 字库"
+#   这层不变量，与哪个 profile 无关 ⇒ 无条件跑。
+#   ⚠️ 反过来，v0.5.1 的删法（"没有中文了所以不用查"）是把**门禁**跟着
+#      实现一起删了 —— 门禁的作用恰恰是防止下次静默丢掉能力。
 #
 # v0.5.0（Claw4 移植）：仿真从 1 个 profile 扩到 2 个。
 #   · tab5  = 1280x720（M5Stack Tab5，原生目标）——门禁状态与 v0.4.x 完全一致
@@ -29,11 +31,47 @@ jobs:
           python3 tools/layout.py --no-preview
           python3 tools/layout.py --profile claw4 --no-preview
 
+      # ── 中文字库语义覆盖（v0.5.3 恢复）────────────────────────────
+      # 查 src/cn_font.h 是否覆盖 src/i18n.h 里每一个汉字、CN_GLYPH_COUNT
+      # 是否自洽、有无空字形。纯 stdlib，任何平台可跑。
+      #   为什么不是字节级漂移检查：点阵是 Pillow+FreeType 光栅化的产物，
+      #   字体/依赖任一不同字节就不同（同一台机器上 STHeiti 与 Hiragino 即不同）。
+      #   字节一致性靠维护机纪律："改中文文案 → 同字体重跑 gen_cnfont.py →
+      #   git diff 必须为空"。CI 只查跨平台恒成立的那部分。
+      - name: 中文字库覆盖门禁 — cn_font.h vs i18n.h
+        run: python3 tools/check_cnfont.py
+
+      # ── 隔离门禁：共享 UI 层不许按板名分叉（v0.5.3）─────────────────
+      # v0.5.0 的教训：为了 Claw4 的 720 窄屏，在**共享层**整条删掉了中文链路，
+      # 结果 Tab5 的中文能力被连带干掉（42 个 TR() 调用点还在，表没了）。
+      # 正确形状：板级差异只以**能力宏**形式出现（PTD_HAS_CJK / PTD_BG_TILE_BLIT），
+      # 由 tools/layout.py 的 profile 表生成。这条把"板名分叉"钉成可机判的红灯。
+      #   ⚠️ sfx.h 的 PTD_AUDIO_CLAW4 是**音频后端选择器**（早于本约定，属既有例外），
+      #      不在此门禁范围；本门禁管 UI/文本/渲染层。
+      - name: 隔离门禁 — 共享 UI 层不得按板名条件编译
+        run: |
+          BAD=$(grep -nE '^[[:space:]]*#[[:space:]]*(if|ifdef|ifndef|elif).*(TAB5|Tab5|CLAW4|Claw4)' \
+                  src/render.h src/actions.h src/i18n.h src/pixel_text.h src/game.h src/main.cpp || true)
+          if [ -n "$BAD" ]; then
+            echo "❌ 共享 UI 层出现板名条件编译（应改用能力宏，见 tools/layout.py）："
+            echo "$BAD"
+            exit 1
+          fi
+          echo "隔离门禁 OK：共享 UI 层只按能力宏分叉"
+
       # ── tab5 仿真（门禁状态与 v0.4.x 相同：0 failed 才绿）──────────
+      # v0.5.3：437 条（v0.5.2 的 319 + 中文双语断言：文本适配按语言循环、
+      #   STR_CN 全表缺字门禁、语言按钮几何/命中/落盘）。
       - name: PC simulator [tab5] — real firmware sources, all assertions
         run: |
           g++ -std=c++17 -O2 -DPTD_FAKE_TOUCH -I build/tab5 -I sim -I sim/compat -I src sim/run.cpp -o sim/sim_tab5
-          ./sim/sim_tab5
+          out=$(./sim/sim_tab5)
+          echo "$out" | tail -30
+          total=$(echo "$out" | grep -oP 'RESULT: \K[0-9]+' || echo 0)
+          failed=$(echo "$out" | grep -oP 'RESULT: [0-9]+ passed, \K[0-9]+' || echo 0)
+          [ "$total" -ge 437 ] || { echo "assert count dropped: $total < 437"; exit 1; }
+          [ "$failed" -le 0 ] || { echo "tab5 failures: $failed > 0"; exit 1; }
+          echo "tab5 OK: $total passed, $failed failed"
 
       # ── claw4 仿真（锁定基线：当前 305 passed / 0 failed）───────────
       # v0.5.1 收尾：断言 221 → 305、失败 7 → 0。凑齐这三项：

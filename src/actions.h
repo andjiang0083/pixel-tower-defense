@@ -113,6 +113,17 @@ static bool handleTap(Gfx* d, const Tap& t) {
   // v0.5.1：语言按钮随中文支持一起删掉了（v0.5.0 起只有英文一种语言），
   //   命中分支与 drawTitle 里的按钮是同一份几何，删一处即可，不留孤儿。
   if (g_w.state == ST_TITLE) {
+#if PTD_HAS_CJK
+    // ── 语言按钮优先（v0.5.3 回归）：点了就切语言 + 立刻落盘 + 整屏重画 ──
+    if (t.y >= LANG_BTN_Y && t.y < LANG_BTN_Y + LANG_BTN_H) {
+      if (t.x >= LANG_EN_X && t.x < LANG_EN_X + LANG_BTN_W) {
+        setLang(LANG_EN); drawTitle(d); progressSaveNow(); return false;
+      }
+      if (t.x >= LANG_CN_X && t.x < LANG_CN_X + LANG_BTN_W) {
+        setLang(LANG_CN); drawTitle(d); progressSaveNow(); return false;
+      }
+    }
+#endif
     g_w.state = ST_SEL;
     drawLevelSelect(d);
     return true;

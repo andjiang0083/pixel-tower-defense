@@ -68,6 +68,15 @@ class Gfx {
   // 引擎层保持平台无关（这条纪律见 gfx.h 头注）。
   virtual void* allocTile(size_t n) { return malloc(n); }
   virtual void  freeTile(void* p)    { free(p); }
+#if PTD_BG_TILE_BLIT
+  // 格子缓存**建好之后**的后端整理钩子（默认 no-op）。
+  // 为什么需要它：不同后端的"块拷贝数据字节序"约定不同——Tab5 的 M5GFX 在
+  //   pushImage(uint16_t*) 上把数据当"字节已交换"（lgfx enum.hpp 的 rgb565_2Byte），
+  //   而面板/帧缓冲是标准 565（rgb565_nonswapped）。与其每次拷贝都交换一遍，
+  //   不如在"建缓存"这一次把顺序摆正（缓存每关只建一次）。
+  // ⚠️ 覆写它的后端要保证 pushImage 出去的语义与这里一致，别两处都换。
+  virtual void prepareTile(uint16_t* buf, size_t n) { (void)buf; (void)n; }
+#endif   // PTD_BG_TILE_BLIT（=0 的板子连虚函数都不加 ⇒ 类布局与 v0.5.2 相同）
 
   // 旋转。Claw4 方形屏用不上（native 朝向即最终朝向）。
   // 保留这个钩子是为了"上电方向不对"时有地方接，而不是去改渲染层。

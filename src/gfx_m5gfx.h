@@ -75,10 +75,60 @@ class GfxM5 : public Gfx {
 #if PTD_PERF_PROBE
     ++p_blits; if (w > 0 && h > 0) p_px += (uint64_t)w * (uint64_t)h;
 #endif
+    // ⚠️⚠️ 16 位深度在 LGFX 里有**两套字节序**（lgfx/v1/misc/enum.hpp:453）：
+    //   16              = rgb565_2Byte      —— get_depth<uint16_t>() 的默认认定，
+    //                                          即"数据字节已交换"（GGGBBBBB RRRRRGGG）
+    //   16 | 0x0100     = rgb565_nonswapped —— Tab5 DSI 面板的实际写深度
+    //                                          （Panel_DSI.inl: _write_depth）
+    // 所以 `d_->pushImage(x,y,w,h,uint16_t*)` 会被 LGFX **再交换一次** ⇒ 红蓝互换。
+    // 真机症状（v0.5.3 首版）：只有"擦格"这条路走过的地方变紫 —— 因为只有它走
+    // 块拷贝，其余（fillRect 单色块）走的是另一条转换，颜色是对的。
+    // 这里显式声明源深度，让 LGFX 不做多余转换（写入即面板字节序）。
+    // ⚠️ 数据必须已是"字节已交换"形态：由 prepareTile() 在**建缓存那一次**摆正
+    //    （设备自检 BLITCHK 实测：plain 形态 exp=F800 got=00F8，交换后 mism=0）。
+    //    两边都换 = 又变紫；这条约定写在这里，别再在别处补一次。
     d_->pushImage(x, y, w, h, data);
   }
 
+#if PTD_PERF_PROBE
+  // ── 块拷贝字节序自检（只在探针档编进来；设备侧"已知输入 → 读回"）─────────
+  // 为什么要它：GfxFb（仿真）有自己的 16bpp 约定，**验不了 M5GFX 的转换**。
+  // 于是把 4 个已知颜色的 8x8 图案分别用"fillRect 参考"与各候选调用形态推上屏，
+  // 再用 readPixel 读回逐点比对，一次把"哪种形态对"钉死（技能库纪律：别猜标志组合）。
+  uint16_t readPixel(int32_t x, int32_t y) { return d_->readPixel(x, y); }
+  void pushImageVariant(int v, int32_t x, int32_t y, int32_t w, int32_t h,
+                        const uint16_t* d) {
+    switch (v) {
+      case 0: d_->pushImage(x, y, w, h, d); break;                       // 模板重载（默认=2Byte）
+      case 9: {                                                          // 生产路径（this->pushImage）
+        // 注意：生产路径假设数据已由 prepareTile 整理过，这里测试时先自己整理一份
+        static uint16_t pr[64 * 64];
+        const size_t n = (size_t)w * h;
+        for (size_t i = 0; i < n && i < sizeof(pr) / 2; ++i) pr[i] = d[i];
+        prepareTile(pr, n);
+        pushImage(x, y, w, h, pr);
+        break;
+      }
+      case 1: {                                                          // 本地交换字节后再来
+        static uint16_t sw[64 * 64];
+        const size_t n = (size_t)w * h;
+        for (size_t i = 0; i < n && i < sizeof(sw) / 2; ++i)
+          sw[i] = (uint16_t)((d[i] >> 8) | (d[i] << 8));
+        d_->pushImage(x, y, w, h, sw);
+        break;
+      }
+    }
+  }
+#endif
+
   // ── 格子缓存优先放片内 SRAM（读 202MB/s vs PSRAM 63MB/s）；不够再退 PSRAM ──
+#if PTD_BG_TILE_BLIT
+  // 建缓存后把字节序摆正（每关一次，替代"每次拷贝都交换"）
+  void prepareTile(uint16_t* buf, size_t n) override {
+    for (size_t i = 0; i < n; ++i) buf[i] = (uint16_t)((buf[i] >> 8) | (buf[i] << 8));
+  }
+#endif
+
   void* allocTile(size_t n) override {
     const size_t freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     void* p = heap_caps_malloc(n, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

@@ -365,7 +365,13 @@ static void shotMode(int lv, int waveTarget, const char* out) {
 //        通关/失败面板 760 宽    → 左右各出屏 20
 //        引导对话框 820 宽      → 左右各出屏 50（且外侧点击不在命中区）
 //        无尽按钮 x=380 写死    → 与面板内其它居中文字不同轴
-static void checkUiTextFit(void) {
+// v0.5.3：中文按能力宏回归 ⇒ 文本适配必须**两种语言都跑一遍**。
+//   为什么要循环而不是"中文单独加几条"：TR() 的 42 个调用点全靠同一张表，
+//   中文字宽（17px/字，不随 scale 缩）与英文完全不同 —— 只测一种语言等于
+//   放过了另一套真实存在的排版。
+//   ⚠️ v0.5.1 曾把 for(lang) 循环删掉（"在测一个不存在的分支"）——那是把
+//      测试改成了实现的样子，而不是让实现满足测试。
+static void checkUiTextFitOne(void) {
   // ── 标题界面 ──────────────────────────────────────────────
   CHECK(px_textWidth("PIXEL TOWER", 7) <= SCREEN_W - 40,
         "title: PIXEL TOWER %dpx too wide", px_textWidth("PIXEL TOWER", 7));
@@ -385,6 +391,26 @@ static void checkUiTextFit(void) {
         "title: deco band bottom %d overlaps hint @%d", TITLE_DECO_Y + 48, TITLE_HINT_Y);
   CHECK(TITLE_HINT_Y + FONT_H * 3 + 16 <= SCREEN_H - 26,
         "title: hint bottom %d overlaps repo line @%d", TITLE_HINT_Y + FONT_H * 3, SCREEN_H - 26);
+#if PTD_HAS_CJK
+  // ── 语言按钮组（v0.5.3 回归）：纵向落在版本行与装饰带之间、横向不出屏 ──
+  CHECK(TITLE_LANG_LBL_Y >= TITLE_VER_Y + FONT_H * 3,
+        "title: LANG label @%d overlaps version bottom @%d",
+        TITLE_LANG_LBL_Y, TITLE_VER_Y + FONT_H * 3);
+  CHECK(LANG_BTN_Y >= TITLE_LANG_LBL_Y + FONT_H * 2,
+        "title: lang buttons @%d overlap label bottom @%d",
+        LANG_BTN_Y, TITLE_LANG_LBL_Y + FONT_H * 2);
+  CHECK(LANG_BTN_Y + LANG_BTN_H <= TITLE_DECO_Y - 8,
+        "title: lang buttons bottom %d overlaps deco band @%d",
+        LANG_BTN_Y + LANG_BTN_H, TITLE_DECO_Y);
+  CHECK(LANG_X0 >= 20 && LANG_CN_X + LANG_BTN_W <= SCREEN_W - 20,
+        "title: lang buttons offscreen (x0=%d right=%d)", LANG_X0, LANG_CN_X + LANG_BTN_W);
+  CHECK(px_textWidth(TR(STR_LANG_EN), 2) <= LANG_BTN_W - 16,
+        "title: EN label %dpx overflows button %d", px_textWidth(TR(STR_LANG_EN), 2), LANG_BTN_W);
+  CHECK(px_textWidth(TR(STR_LANG_CN), 2) <= LANG_BTN_W - 16,
+        "title: CN label %dpx overflows button %d", px_textWidth(TR(STR_LANG_CN), 2), LANG_BTN_W);
+  CHECK(px_textWidth(TR(STR_LANG), 2) <= SCREEN_W - 120,
+        "title: LANG title %dpx too wide", px_textWidth(TR(STR_LANG), 2));
+#endif
 
   // ── HUD（全部引用 render.h 的 HUD_* 命名常量，与绘制同源）──
   // WAVE "250/250" 右缘必须 < NEXT WAVE 按钮左缘（v0.2.1 真机 bug #3 同型）
@@ -587,6 +613,20 @@ static void checkUiTextFit(void) {
 // 产出 2 语言 × 11 界面 = 22 张 1280x720 PPM（tools/to_png.py 转 PNG 后人眼评审）。
 // 每次改 UI 后跑一遍；checkUiTextFit() 管"文字不溢出容器"，
 // 这个批处理管"元素之间不错位/不重叠"——两者合起来替代截图人审。
+
+#if PTD_HAS_CJK
+static void checkUiTextFit(void) {
+  for (uint8_t lang = 0; lang < LANG_COUNT; ++lang) {
+    setLang(lang);
+    printf("  [ui] 文本适配：%s\n", lang == LANG_CN ? "CN" : "EN");
+    checkUiTextFitOne();
+  }
+  setLang(LANG_EN);
+}
+#else
+static void checkUiTextFit(void) { checkUiTextFitOne(); }
+#endif
+
 static void shotsBatch(const char* dir) {
   char path[512];
   g_renderOn = true;
@@ -605,9 +645,14 @@ static void shotsBatch(const char* dir) {
     for (int i = 0; i < MAX_ENEMIES; ++i) if (g_w.enemies[i].active) drawEnemy(D, g_w.enemies[i]);
   };
 
-  // v0.5.1：语言循环删掉（只有英文一种语言，见 i18n.h 头注）。
-  {
-    const char* L = "en";
+  // v0.5.3：语言循环回归（中文按能力宏恢复，见 i18n.h 头注）。
+  //   为什么要两种语言都出图：中文排版（17px/字、不随 scale 缩）与英文完全不同，
+  //   只出一种语言的图 = 少验一套真实排版（v0.5.0~v0.5.2 就是只出 en）。
+  for (int li = 0; li < PTD_LANG_COUNT; ++li) {
+#if PTD_HAS_CJK
+    setLang((uint8_t)li);
+#endif
+    const char* L = (li == LANG_CN) ? "cn" : "en";
 
     // ① 标题界面（drawTitle 自带清屏）
     g_w.state = ST_TITLE;
@@ -736,7 +781,7 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  printf("=== PC sim v0.4.3: UI text-fit + missing-glyph guards, real game/render/touch/actions ===\n");
+  printf("=== PC sim v0.5.3: UI text-fit + missing-glyph guards, real game/render/touch/actions ===\n");
   // 截图模式（文档/商店封面用），不跑断言
   if (const char* s = getenv("SIM_SHOT")) {
     const char* wv = getenv("SIM_SHOT_WAVE");
@@ -755,7 +800,7 @@ int main(int argc, char** argv) {
     shotsBatch(argv[2]);
     return 0;
   }
-  printf("=== PC sim v0.4.3: UI text-fit + missing-glyph guards, real game/render/touch/actions ===\n");
+  printf("=== PC sim v0.5.3: UI text-fit + missing-glyph guards, real game/render/touch/actions ===\n");
   printf("grid %dx%d cell=%d | caps e/t/b/fx = %d/%d/%d/%d\n",
          COLS, MAP_ROWS, CELL, MAX_ENEMIES, MAX_TOWERS, MAX_BULLETS, MAX_FX);
 
@@ -1532,6 +1577,37 @@ int main(int argc, char** argv) {
   // 发现）。新增界面文字必须在这里补容器断言——比"每次人眼看全套截图"
   // 可靠，且 CI 会跑。
   checkUiTextFit();
+
+#if PTD_HAS_CJK
+  // ── v0.5.3：中文缺字门禁 + 语言切换行为 ──────────────────────────
+  //   ① 缺字：STR_CN 表里每个汉字都必须在 cn_font.h 里有字形。表是字库的**唯一
+  //      输入**（tools/gen_cnfont.py 扫 i18n.h），所以"把表里每条都渲染一遍、
+  //      计数器必须为 0"就是覆盖门禁——漏字在真机上的症状是"标题缺笔画"，
+  //      静默且难查（v0.4.2 踩过）。
+  {
+    setLang(LANG_CN);
+    const int before = s_cnMissing;
+    for (int id = 0; id < STR_COUNT; ++id) px_text(D, 0, 0, TR((StrId)id), C_TEXT, 2);
+    CHECK(s_cnMissing == before,
+          "中文缺字 %d 个：STR_CN 表里有字没进 cn_font.h（重跑 tools/gen_cnfont.py）",
+          s_cnMissing - before);
+    printf("  [cjk] STR_CN 全表渲染：缺字 %d，字形 %d 个\n", s_cnMissing - before, CN_GLYPH_COUNT);
+    setLang(LANG_EN);
+  }
+  //   ② 语言切换：点 CN 按钮 → 语言切换 + 立刻落盘；再点 EN → 切回
+  {
+    g_w.state = ST_TITLE;
+    enterLevel(D, 0);                       // 先把世界准备好（标题界面也会用到）
+    g_w.state = ST_TITLE;
+    s_simSaves = 0; g_saveProgress = simCountSave;
+    tapAt(LANG_CN_X + LANG_BTN_W / 2, LANG_BTN_Y + LANG_BTN_H / 2);
+    CHECK(g_lang == LANG_CN, "tap 中文 button did not switch language (lang=%d)", (int)g_lang);
+    CHECK(s_simSaves >= 1, "language switch did not save progress");
+    tapAt(LANG_EN_X + LANG_BTN_W / 2, LANG_BTN_Y + LANG_BTN_H / 2);
+    CHECK(g_lang == LANG_EN, "tap ENGLISH button did not switch back (lang=%d)", (int)g_lang);
+    g_saveProgress = nullptr;
+  }
+#endif
 
   printf("\n=== RESULT: %d passed, %d failed (level-loop checks=%d) ===\n",
          g_pass, g_fail, totalChecksBefore);

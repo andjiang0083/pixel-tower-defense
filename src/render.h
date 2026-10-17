@@ -164,6 +164,12 @@ static const uint16_t* cellTile(int col, int row) {
   uint16_t* buf = s_tileBuf + (size_t)s_tileN * CELL * CELL;
   TileCanvas tc(buf);
   drawCellBaseAt(&tc, 0, 0, col, row);             // 同一份画法 ⇒ 逐像素相同
+  // 后端整理（如 Tab5 要在块拷贝前把字节序摆正；默认 no-op）
+  // ⚠️ 仿真侧 GfxFb 是 no-op，所以"tile vs 直画逐像素相同"这条断言仍成立：
+  //    整理只改**存储形态**，pushImage 出去的像素与直画一致（设备自检 BLITCHK 守着）。
+#if PTD_BG_TILE_BLIT
+  tc.prepareTile(buf, (size_t)CELL * CELL);
+#endif
   s_tileKey[s_tileN][0] = k0;
   s_tileKey[s_tileN][1] = k1;
   ++s_tileN;
@@ -250,9 +256,20 @@ static const uint16_t* cellTile(int col, int row) {
 #define WNUM_X (BTN_X + HUD_PLATE_PAD - HUD_NUM_W(HUD_SCALE))
 // WAVE 标签：在波次数字左侧留一个缝
 #define WLBL_X (WNUM_X - FONT_ADV(HUD_SCALE) * 4 - HUD_PLATE_PAD)
-// 无尽 BEST：紧贴 WAVE 标签左侧。块宽 = 标签("BEST") + 6 + 数字(3字)，再留 8px 缝。
-//   英文标签 "BEST" = 4×6 = 24px；数字 3×6 = 18px → 24 + 6 + 18 + 8 = 56。
-#define BEST_X (WLBL_X - (FONT_ADV(1) * 4 + 6 + FONT_ADV(1) * 3 + 8))
+// 无尽 BEST：紧贴 WAVE 标签左侧。块宽 = 标签 + 6 + 数字(3字)，再留 8px 缝。
+// ⚠️ v0.5.3：留位必须按**最宽的那种语言**算，不能按英文算 —— HUD 是常驻元素，
+//   语言是运行时可切的，切一次重排整个 HUD 是不现实的。
+//   中文 "最高" = 2 字 × 17px = 34px，比英文 "BEST" = 4×6 = 24px 宽 10px；
+//   按英文留位时中文把 WAVE 标签压掉（仿真双语断言实测 @854 越界）。
+#if PTD_HAS_CJK
+#define BEST_LBL_W  (2 * CN_ADV)          // "最高" 2 字
+#else
+// ⚠️ 故意**不带括号**：这样 BEST_X 的宏展开与 v0.5.2 逐字符相同 ⇒ claw4 预处理后
+//    与改前无差异（零位移门禁要求，见 docs/FIXLOG：共享层改动必须附此证明）。
+//    本宏只在本文件的 `(BEST_LBL_W + …)` 里用一次，不存在优先级风险。
+#define BEST_LBL_W  FONT_ADV(1) * 4       // "BEST" 4 字
+#endif
+#define BEST_X (WLBL_X - (BEST_LBL_W + 6 + FONT_ADV(1) * 3 + 8))
 
 // HUD 静态标签（♥ / HP / $ / WAVE）——只画一次，两处重画共用同一份
 static void drawHudLabels(Gfx* g) {
@@ -1155,6 +1172,12 @@ static void drawRainbow(Gfx* g, int cx, int y, const char* s, int scale,
   int x = cx - w / 2, i = 0;
   px_textCenter(g, cx + 6, y + 6, s, C_BG, scale);       // 投影（右下 6px）
   while (*s) {
+#if PTD_HAS_CJK
+    if ((uint8_t)*s >= 0x80) {                           // 中文 16px：单色金
+      px_cnChar(g, x, y + (FONT_H * scale - CN_FONT_H) / 2, s, C_GOLD);
+      s += 3; x += CN_ADV; continue;
+    }
+#endif
     px_char(g, x, y, *s++, cols[i % ncol], scale);
     x += adv; ++i;
   }
@@ -1170,6 +1193,23 @@ static void drawRainbow(Gfx* g, int cx, int y, const char* s, int scale,
 // 语言按钮删掉后原位置（500）上方空了 200px，画面下重上轻。
 #define TITLE_DECO_Y  ((SCREEN_H * 620) / 1000)   // 720 → 446
 #define TITLE_HINT_Y  ((SCREEN_H * 806) / 1000)   // 720 → 580
+
+#if PTD_HAS_CJK
+// ── 语言按钮（v0.5.3 回归；render 画 / actions 命中，唯一真源同 MUTE_BTN 惯例）──
+// 纵向位置**从当前布局链推导**，不抄 v0.4.4 的写死值（302/330 是 1280 时代的经验值，
+// 而 v0.5.1 起标题布局全部比例化）——写死值是"改一处必漏一处"的老病根。
+// 链：版本行底 → 标签 → 按钮组 → 装饰带。仿真 checkUiTextFit 守住这三段间距。
+#define LANG_BTN_W        200
+#define LANG_BTN_H        56
+#define LANG_BTN_GAP      20
+#define TITLE_LANG_LBL_Y  (TITLE_VER_Y + FONT_H * 3 + 16)            // 720 → 309
+#define LANG_BTN_Y        (TITLE_LANG_LBL_Y + FONT_H * 2 + 10)       // 720 → 333
+#define LANG_X0           ((SCREEN_W - (2 * LANG_BTN_W + LANG_BTN_GAP)) / 2)  // 1280 → 430
+#define LANG_EN_X         LANG_X0
+#define LANG_CN_X         (LANG_X0 + LANG_BTN_W + LANG_BTN_GAP)      // 1280 → 650
+// 中文副标题（英文模式画彩虹英文标题，不用这条）：夹在第二行标题与版本号之间
+#define TITLE_CN_SUB_Y    (TITLE_Y2 + FONT_H * 7 + 14)               // 720 → 243
+#endif
 
 static void drawTitle(Gfx* g) {
   g->fillScreen(C_BG);
@@ -1188,9 +1228,33 @@ static void drawTitle(Gfx* g) {
   drawRainbow(g, SCREEN_W / 2, TITLE_Y1, "PIXEL TOWER", 7, RC, 8);
   drawRainbow(g, SCREEN_W / 2, TITLE_Y2, "DEFENSE", 7, RC, 8);
 
+#if PTD_HAS_CJK
+  // 中文副标题：必须走 TR(STR_TITLE_CN)——硬编码中文不进 STR_CN 表，gen_cnfont
+  // 就收不到字（v0.4.2 曾因此缺 3 字、开机标题缺笔画）。
+  if (langCN()) px_textCenter(g, SCREEN_W / 2, TITLE_CN_SUB_Y, TR(STR_TITLE_CN), C_GOLD, 2);
+#endif
+
   // 版本号（金色，v0.4.3 起每次发版手改这里 + banner + publish.yaml）
   char vb[24]; strcpy(vb, "v0.5.3");
   px_textCenter(g, SCREEN_W / 2, TITLE_VER_Y, vb, C_GOLD, 3);
+
+#if PTD_HAS_CJK
+  // ── 语言按钮：当前语言金色高亮（标签显示"目标语言"名，惯例同 v0.4.3）──
+  for (int i = 0; i < LANG_COUNT; ++i) {
+    const int bx = (i == LANG_EN) ? LANG_EN_X : LANG_CN_X;
+    const bool cur = ((int)g_lang == i);
+    g->fillRect(bx, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, C_SLOT_BG);
+    g->drawRect(bx, LANG_BTN_Y, LANG_BTN_W, LANG_BTN_H, cur ? C_GOLD : C_GRASS_EDGE);
+    if (cur) g->drawRect(bx + 3, LANG_BTN_Y + 3, LANG_BTN_W - 6, LANG_BTN_H - 6, C_GOLD);
+    // 标签走 TR：EN 模式显示 ENGLISH/中文，CN 模式显示 英文/中文。
+    // 硬编码会让字库漏收（同 STR_TITLE_CN 的教训）。
+    const char* label = (i == LANG_EN) ? TR(STR_LANG_EN) : TR(STR_LANG_CN);
+    px_textCenter(g, bx + LANG_BTN_W / 2, LANG_BTN_Y + 20, label,
+                  cur ? C_TEXT : C_TEXT_DIM, 2);
+  }
+  // 标签居中在按钮组上方（避免"按语言宽度跳动"，也让长标签不压进按钮）
+  px_textCenter(g, SCREEN_W / 2, TITLE_LANG_LBL_Y, TR(STR_LANG), C_TEXT_DIM, 2);
+#endif
 
   // 装饰带：塔剪影 + 小兵 + 地面线（全部矩形，复用塔的配色语言）
   // v0.5.0：横坐标从写死的 300/470/640/810/980 与 1120/1030/940/850

@@ -32,6 +32,15 @@
 
 enum LangId : uint8_t { LANG_EN = 0, LANG_CN = 1, LANG_COUNT = 2 };
 
+// 界面语言数量：出图批处理 / 文本适配循环按它走。
+//   ⚠️ 单语形态（claw4）自然是 1 —— 这样"遍历语言"只有一份代码，不会退化成
+//      "只出英文图"（v0.5.0 削中文时就是这么静默退化的：图还在，中文那路没了）。
+#if PTD_HAS_CJK
+#define PTD_LANG_COUNT LANG_COUNT
+#else
+#define PTD_LANG_COUNT 1
+#endif
+
 enum StrId : uint8_t {
   STR_TITLE_HINT = 0,   // 标题界面：点击开始
 #if PTD_HAS_CJK

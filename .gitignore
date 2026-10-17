@@ -31,3 +31,6 @@ releases/*.bin
 
 # macOS
 .DS_Store
+# Python 缓存（tools/*.py 的 __pycache__，v0.5.3 起明确忽略）
+__pycache__/
+*.pyc
