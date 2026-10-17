@@ -1181,14 +1181,79 @@ int main(int argc, char** argv) {
       CHECK(l3>=34, "splash halved by shield: %.0f (expect >=34)", l3);
     }
 
-    // 压叠：刷怪完毕+残敌≥8在场 → ~5s(150帧) 后强开下波（不等全清）
+    // ── 压叠（v0.5.2 判据）：本波幸存者 ≤ 本波一半、且场上总数 < OVERLAP_FIELD_MAX ──
+    // ① 正例：本波只剩 2 只（≤ quota，收尾）→ ~5s(150帧) 后强开下波，不等全清
     levelLoad(1); g_w.gold=9999; g_w.lives=99999;        // ⚠️ 用 L2(7波)：L1 第5波=末波，
     g_w.wave = 4; startNextWave();                       //    末波禁压叠（守卫是对的）
-    int wsp=0; while (alive()<8 && wsp<400){tick(1);++wsp;}  // 等≥8只进场
-    g_w.toSpawn = 0;                                   // 假装已刷完，场上留残敌
-    CHECK(alive()>=8, "overlap setup: need 8 survivors (got %d)", alive());
-    int fr=0; while (g_w.state==ST_WAVE && g_w.wave==5 && fr<300){tick(1);++fr;}
-    CHECK(fr>=115 && fr<=185, "overlap force-start off: %d frames (expect ~150)", fr);
+    {                                                    //    w5：waveSize=13 → quota=6
+      int wsp=0; while (alive()<6 && wsp<400){tick(1);++wsp;}
+      g_w.toSpawn = 0;                                   // 假装已刷完
+      int kept=0;                                        // 只留 2 只（其余=已被打死）
+      for (int i=0;i<MAX_ENEMIES;++i) if (g_w.enemies[i].active) {
+        if (++kept > 2) g_w.enemies[i].active = false;
+      }
+      CHECK(waveSurvivors()==2 && alive()==2, "overlap setup: survivors=%d alive=%d (expect 2/2)",
+            waveSurvivors(), alive());
+      int fr=0; while (g_w.state==ST_WAVE && g_w.wave==5 && fr<300){tick(1);++fr;}
+      CHECK(fr>=115 && fr<=185, "overlap force-start off: %d frames (expect ~150)", fr);
+    }
+
+    // ② 反例（★v0.5.2 回归：L10 第 2 波雪崩）：本波 8 只全在场上 → 5s 内绝不强开
+    //    旧判据数"场上总敌数≥8"，于是第 2 波 9 只刚刷完、一只没死就开第 3 波，
+    //    波波踩残留叠到 MAX_ENEMIES 硬顶（真机 fillRect/帧 424→4192 → 帧预算崩）。
+    levelLoad(1); g_w.gold=9999; g_w.lives=99999;
+    g_w.wave = 4; startNextWave();                       // → w5（waveSize=13, quota=6）
+    {
+      int wsp=0; while (alive()<8 && wsp<400){tick(1);++wsp;}
+      g_w.toSpawn = 0;
+      int fr=0; while (g_w.state==ST_WAVE && g_w.wave==5 && fr<300){tick(1);++fr;}
+      CHECK(g_w.wave==5 && g_w.state==ST_WAVE,
+            "overlap fired with %d/%d of THIS wave alive (cascade!)", waveSurvivors(), waveSize(5));
+    }
+
+    // ③ 帧预算红线：本波只剩 2 只、但场上总数 ≥ OVERLAP_FIELD_MAX → 仍不压叠
+    levelLoad(1); g_w.gold=9999; g_w.lives=99999;
+    g_w.wave = 4; startNextWave();
+    {
+      g_w.toSpawn = 0;
+      for (int i=0;i<MAX_ENEMIES;++i) g_w.enemies[i].active = false;
+      int n=0;                                          // 造 16 只：全部标成"上一波残留"
+      for (int i=0;i<MAX_ENEMIES && n<OVERLAP_FIELD_MAX;++i) {
+        spawnKind(i, 0 /*K_GRUNT=兵种表 0*/, 0, false);
+        g_w.enemies[i].waveTag = (uint8_t)(g_w.wave - 1);
+        ++n;
+      }
+      CHECK(alive()>=OVERLAP_FIELD_MAX && waveSurvivors()==0,
+            "field-cap setup: alive=%d survivors=%d", alive(), waveSurvivors());
+      int fr=0; while (g_w.state==ST_WAVE && g_w.wave==5 && fr<300){tick(1);++fr;}
+      CHECK(g_w.wave==5 && g_w.state==ST_WAVE,
+            "overlap fired with %d on field (cap %d) — 帧预算会崩", alive(), OVERLAP_FIELD_MAX);
+    }
+  }
+
+  // ── 14b. v0.5.2：弱防真人在 L10 不再被"压叠雪崩"打成幻灯片（真机 bug 回归）──
+  //   真机症状（用户报告）：L10 第 2 波没打完就自动开第 3、4 波 → 场地堆到
+  //   MAX_ENEMIES 硬顶 → 帧预算崩掉（PC 仪表：fillRect/帧 424 → 4192，≈10×）。
+  //   判据：3 座 1 级机枪打 L10 七分钟，场上峰值不得触顶、不得堆过 32 只。
+  {
+    g_renderOn = false;                       // 长跑只跑逻辑（同 autoPlayLevel）
+    levelLoad(9);                             // L10 TERMINAL
+    int bc[3] = {0,0,0}, brow = -1;
+    CHECK(findBuildCells(3, bc, &brow), "L10 weak-player: no 3 buildable cells");
+    for (int i=0;i<3;++i) CHECK(buildTower(bc[i], brow, 0), "L10 weak-player: build %d failed", i);
+    g_w.lives = 99999;                        // 只看负载/波次推进，不看会不会输
+    startNextWave();
+    int peak = 0;
+    for (int f=0; f<30*420; ++f) {            // 7 分钟（旧代码 310s 就已经触顶）
+      if (g_w.state == ST_READY && g_w.wave > 0 && g_w.readyLeftMs <= 1500) startNextWave();
+      tick(1);
+      if (alive() > peak) peak = alive();
+    }
+    printf("  [压叠回归] L10 弱防 3 塔 7min：峰值在场=%d wave=%d/%d 击杀=%d 漏=%d\n",
+           peak, g_w.wave, LV().waves, g_w.score, g_w.leakCount);
+    CHECK(peak < MAX_ENEMIES, "L10 弱防雪崩：峰值在场=%d 触到硬顶 %d", peak, MAX_ENEMIES);
+    CHECK(peak <= 32, "L10 弱防场地堆叠：峰值在场=%d（设计上限 32）", peak);
+    g_renderOn = true;
   }
 
   // ── 15. v0.4.1：进度落盘去重（P0 回归：uint16 截断→每帧写 NVS）────

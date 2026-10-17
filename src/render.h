@@ -1069,7 +1069,7 @@ static void drawTitle(Gfx* g) {
   drawRainbow(g, SCREEN_W / 2, TITLE_Y2, "DEFENSE", 7, RC, 8);
 
   // 版本号（金色，v0.4.3 起每次发版手改这里 + banner + publish.yaml）
-  char vb[24]; strcpy(vb, "v0.5.1");
+  char vb[24]; strcpy(vb, "v0.5.2");
   px_textCenter(g, SCREEN_W / 2, TITLE_VER_Y, vb, C_GOLD, 3);
 
   // 装饰带：塔剪影 + 小兵 + 地面线（全部矩形，复用塔的配色语言）

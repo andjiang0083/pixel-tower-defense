@@ -125,8 +125,11 @@ static const Waypoint ALL_WP[] = { {6,0}, {17,2}, {1,2}, {1,7}, {8,7}, {8,11}, {
 #define KILL_GOLD_PCT   150
 // 波间自动开波倒计时（v0.3.2：10s→6s）
 #define AUTO_NEXT_MS    7000
-// 压叠窗口（v0.3.2）：本波刷完但残敌未清→ms 后强开下波
+// 压叠窗口（v0.3.2，v0.5.2 修判据）：本波刷完且"本波已清完" → ms 后强开下波
 #define OVERLAP_MS      5000
+#define OVERLAP_LEFTOVER_PCT 50   // 本波幸存者 ≤ 本波规模的百分之几（v0.5.2）
+#define OVERLAP_LEFTOVER_MIN 2   // 至少留这么多只（小波兜底，v0.5.2）
+#define OVERLAP_FIELD_MAX    16   // 场上总数 ≥ 此值 → 不压叠（帧预算红线，v0.5.2）
 
 struct TowerType { const char* key; const char* disp; int cost, range_px, fire_ms,
                    damage, proj_speed, splash_r; uint8_t behavior; };

@@ -179,7 +179,18 @@ KILL_GOLD_PCT = 150   # v0.4：保持 150。实测教训：波量+双王机制�
                       # 紧平衡——这正对小学生反馈：难在"使坏"，不难在"抠门"。
 # v0.2.1：NEXT WAVE 变倒计时——波间 10s 自动开下一波（首波仍手动，留布塔时间）
 AUTO_NEXT_MS = 7000     # v0.3.2：10s→7s，波间喘息缩短
-OVERLAP_MS   = 5000     # v0.3.2：刷怪完毕且残敌≥8→5s 后强开下波（压叠，防雪崩）
+# 压叠窗口：本波刷怪完毕、且本波已**基本清完**→ 5s 后强开下波。
+#   v0.3.2 的判据是"场上总敌数 ≥ 8"，不区分这 8 只是哪一波的 —— L10 实测
+#   （弱防真人 playtest）：第 2 波 9 只刚刷完（一只没死，正好 ≥8）就满足条件，
+#   5s 后强开第 3 波；此后每一波都踩着前几波的残留再次满足 → 波波叠到
+#   MAX_ENEMIES(48) 硬顶，fillRect/帧 424→4192（≈10×），真机帧预算崩掉。
+#   v0.5.2 起只看**本波出生的幸存者**，且必须落到"清理收尾"的量级。
+OVERLAP_MS   = 5000     # 本波清完后 5s 强开下波
+OVERLAP_LEFTOVER_PCT = 50   # 本波幸存者 ≤ 本波规模的一半才算清完（v0.5.2）
+OVERLAP_LEFTOVER_MIN = 2    # 兜底：小波（9 只）也要留 2 只的余量，别卡死收尾
+# 场上总敌数红线：≥ 16 只说明玩家已经落后，这时再压一波只是把帧预算烧光
+#   （实测 48 只时每帧 4192 次 fillRect，正常波 424 次）。★ 只堵雪崩，不堵正常压叠。
+OVERLAP_FIELD_MAX    = 16
 
 TOWER_TYPES = [
     # behavior: 0=单体弹 1=溅射炮弹(仅地面) 2=冰霜光环 3=能量产出(不攻击) 4=激光瞬击(穿地面+空中)
@@ -824,6 +835,7 @@ def gen_header():
         sell=SELL_REFUND_PCT, wb=WAVE_BONUS_BASE, ws=WAVE_BONUS_STEP,
         hpg=HP_GROWTH, towers=towers_c, ups=ups_c, tml=TOWER_MAX_LEVEL,
         hpb=HP_BASE, kgp=KILL_GOLD_PCT, anm=AUTO_NEXT_MS, ovl=OVERLAP_MS,
+        olp=OVERLAP_LEFTOVER_PCT, olm=OVERLAP_LEFTOVER_MIN, ofm=OVERLAP_FIELD_MAX,
         fsp=FROST_SLOW_PCT, fsm=FROST_SLOW_MS, kinds=kinds_c,
         ksw=K_SWARM, kar=K_ARMOR, kbo=K_BOSS, khe=K_HEAL,
         sb=SWARM_BURST, afw=ARMOR_FROM_WAVE,
@@ -981,8 +993,11 @@ static const Waypoint ALL_WP[] = { %(wp)s };
 #define KILL_GOLD_PCT   %(kgp)d
 // 波间自动开波倒计时（v0.3.2：10s→6s）
 #define AUTO_NEXT_MS    %(anm)d
-// 压叠窗口（v0.3.2）：本波刷完但残敌未清→ms 后强开下波
+// 压叠窗口（v0.3.2，v0.5.2 修判据）：本波刷完且"本波已清完" → ms 后强开下波
 #define OVERLAP_MS      %(ovl)d
+#define OVERLAP_LEFTOVER_PCT %(olp)d   // 本波幸存者 ≤ 本波规模的百分之几（v0.5.2）
+#define OVERLAP_LEFTOVER_MIN %(olm)d   // 至少留这么多只（小波兜底，v0.5.2）
+#define OVERLAP_FIELD_MAX    %(ofm)d   // 场上总数 ≥ 此值 → 不压叠（帧预算红线，v0.5.2）
 
 struct TowerType { const char* key; const char* disp; int cost, range_px, fire_ms,
                    damage, proj_speed, splash_r; uint8_t behavior; };

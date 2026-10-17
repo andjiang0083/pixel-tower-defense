@@ -71,6 +71,11 @@ struct Enemy {
   uint8_t  hitCnt;    // 💰 GREED：受击计数（每 GREED_HITS 次偷金）
   uint8_t  bossMini;  // 1 = mid-boss（缩小版王，渲染小旗）
   uint8_t  molted;    // 🛡 1 = 已蜕壳（一次性）
+  // v0.5.2：出生波次（压叠判据专用）。只用来回答"这波清完了没"——
+  //   旧判据数的是"场上总敌数"，分不清残留是哪一波的，于是 L10 第 2 波
+  //   9 只刚刷完就满足条件、波波叠到硬顶（详见 layout.py 的 OVERLAP_*）。
+  //   ⚠️ uint8_t：ENDLESS_WAVES=250 < 256，比较时两侧同款强转，不回绕。
+  uint8_t  waveTag;
 };
 
 // ── 炮塔瞄准：8 方向步进（像素美术惯例，避免斜线锯齿）────────────
@@ -311,6 +316,22 @@ static void levelLoad(int idx) {
 // （mini 王出场阈值）各写一遍，改一处忘另一处会静默漂移。
 static inline int waveSize(int w) { return 6 + (w * 3) / 2; }
 
+// ── v0.5.2：压叠判据（见 gameUpdate 末尾的说明与 layout.py 的 OVERLAP_*）──
+// 本波出生的幸存者。只认 waveTag == 本波：前几波的残留不算"这波没打完"，
+// 也不能靠它们凑数把新波顶出来（旧判据 alive>=8 的雪崩根因）。
+static inline int waveSurvivors(void) {
+  int n = 0;
+  const uint8_t cur = (uint8_t)g_w.wave;
+  for (int i = 0; i < MAX_ENEMIES; ++i)
+    if (g_w.enemies[i].active && g_w.enemies[i].waveTag == cur) ++n;
+  return n;
+}
+// 本波允许"还剩几只"就算清完：规模的 OVERLAP_LEFTOVER_PCT%，至少 MIN 只
+static inline int overlapQuota(void) {
+  int q = waveSize(g_w.wave) * OVERLAP_LEFTOVER_PCT / 100;
+  return q < OVERLAP_LEFTOVER_MIN ? OVERLAP_LEFTOVER_MIN : q;
+}
+
 static void startNextWave(void) {
   if (g_w.state != ST_READY || g_lv < 0) return;   // ⚠️ ST_CLEAR/游戏结束都不响应
   ++g_w.wave;
@@ -351,6 +372,7 @@ static void spawnKind(int i, int kind, uint8_t route, bool elite, bool mini = fa
   e.shield = k.shield != 0;                  // v0.3.2：弹盾兵
   e.route  = route;
   e.wp     = 0;
+  e.waveTag = (uint8_t)g_w.wave;             // v0.5.2：压叠判据认"本波出生的"（3 条出生路径都要写）
   routeWPPx(route, 0, &e.x, &e.y);           // 该 route 第 0 航点（右边缘）
   e.x += CELL / 2.0f;                         // 屏幕外走进来
   if (e.flying) e.y -= FLY_LIFT;            // v0.3.0：空中单位视觉抬高
@@ -403,6 +425,7 @@ static void broodSpawn(Enemy& boss) {
       const EnemyKind& k = ENEMY_KINDS[K_SWARM];
       e.active = true; e.kind = K_SWARM;
       e.route = boss.route; e.wp = boss.wp;
+      e.waveTag = (uint8_t)g_w.wave;        // v0.5.2：产卵子女算本波（不外挂）
       e.x = boss.x + (n - 1) * 14.0f; e.y = boss.y;
       float hpScale = k.hp_scale * lvDiff();
       for (int w = 1; w < g_w.wave; ++w) hpScale *= HP_GROWTH;
@@ -439,6 +462,7 @@ static void splitDeath(Enemy& boss) {
       const EnemyKind& k = ENEMY_KINDS[kind];
       e.active = true; e.kind = (uint8_t)kind;
       e.route = boss.route; e.wp = boss.wp;   // 从尸体位置继续往前跑
+      e.waveTag = (uint8_t)g_w.wave;          // v0.5.2：分裂体算本波（不外挂）
       routeWPPx(boss.route, boss.wp + 1, &e.x, &e.y);
       float t = (m - n / 2) * 0.34f; if (t > 1) t = 1; if (t < -1) t = -1;
       e.x += t * 26.0f; e.y += t * 8.0f;
@@ -1085,8 +1109,14 @@ static void gameUpdate(uint32_t dtMs) {
     if (--f.lifeFrames == 0) { f.active = false; }
   }
 
-  // ── v0.3.2：压叠窗口。刷怪完毕但残敌还在爬 → 倒计时强开下波。
+  // ── 压叠窗口（v0.3.2；v0.5.2 修判据 ★）：本波刷怪完毕、且**本波已清完** → 倒计时强开下波。
   //    （旧规则"全清才进下一波"让塔永远集火单只，溢出伤害全浪费。）
+  // ⚠️ v0.5.2 根因修复（L10 第 2 波就雪崩，波波叠到 48 硬顶、帧预算崩）：
+  //    旧判据数的是**场上总敌数**（alive≥8），它分不清这 8 只是哪一波的：
+  //      · 小波（第 2 波只有 9 只）刚刷完、一只没死就满足 → 5s 后强开下波；
+  //      · 此后每一波都踩着前几波的残留再次满足 → 雪崩，再也追不回来。
+  //    现在只数**本波出生的幸存者**（waveTag == 本波），并要求它落到收尾量级；
+  //    再加一条场上总数红线，落后时不叠（帧预算见 layout.py 的 OVERLAP_*）。
   // ⚠️ static 跨关存活：必须绑 wave——换关/重开后 wave 变了就重置，
   //    否则带着上一关的 until 秒开新波。
   // ⚠️ 末波绝不压叠：wave>=waves 强开下一关怪=永远到不了 ST_CLEAR
@@ -1098,7 +1128,7 @@ static void gameUpdate(uint32_t dtMs) {
       && g_w.wave < lvWaves()) {                 // v0.4：无尽用 lvWaves()（250）
     int alive = 0;
     for (int i = 0; i < MAX_ENEMIES; ++i) if (g_w.enemies[i].active) ++alive;
-    if (alive >= 8) {                          // v0.3.2：残敌≥8才压叠（漏1~2只不值得开新波）
+    if (alive < OVERLAP_FIELD_MAX && waveSurvivors() <= overlapQuota()) {
       if (s_overlapUntil == 0) s_overlapUntil = now + OVERLAP_MS;
       else if (now >= s_overlapUntil) { g_w.state = ST_READY; g_w.readyLeftMs = 1; }
     } else s_overlapUntil = 0;

@@ -62,7 +62,8 @@ jobs:
           total=$(echo "$out" | grep -oP 'RESULT: \K[0-9]+' || echo 0)
           failed=$(echo "$out" | grep -oP 'RESULT: [0-9]+ passed, \K[0-9]+' || echo 0)
           # 断言总数基线（新增断言时手动上调，并说明原因）
-          [ "$total" -ge 305 ] || { echo "assert count dropped: $total < 305"; exit 1; }
+          # v0.5.2：305 → 320。新增 15 条（压叠判据 §14①②③ + L10 弱防雪崩 §14b）。
+          [ "$total" -ge 320 ] || { echo "assert count dropped: $total < 320"; exit 1; }
           # 失败数基线：已归零，任何回归都必须立刻红
           [ "$failed" -le 0 ] || { echo "claw4 failures grew: $failed > 0"; exit 1; }
           echo "claw4 baseline OK: $total passed, $failed failed"
