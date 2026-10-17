@@ -19,8 +19,15 @@ import hashlib, pathlib, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BASE = ROOT / 'docs' / 'claw4-isolation.sha256'
-FILES = ['src/render.h', 'src/actions.h', 'src/gfx.h', 'src/gfx_m5gfx.h', 'src/gfx_fb.h',
-         'src/i18n.h', 'src/pixel_text.h', 'src/game.h', 'src/sfx.h', 'src/main.cpp']
+# ⚠️ 文件清单**自动发现**，不许写死：写死时新增一个共享文件就悄悄漏出覆盖范围
+#   （v0.5.4 复查发现原来的 10 个是硬编码的 —— 那正是"门禁看着在、其实有洞"的形态）。
+#   · 自动发现 src/ 下全部 .h/.cpp（新增文件自动进覆盖）
+#   · 例外：sdkconfig.h 是 ESP-IDF 的设备侧 shim（`#include_next`），本机预处理不了，
+#     也不含共享逻辑 ⇒ 显式排除，并把排除项打印出来（覆盖范围必须可见，不许静默）
+EXCLUDE = {'src/sdkconfig.h'}
+FILES = [str(p.relative_to(ROOT)) for p in
+         sorted((ROOT / 'src').glob('*.h')) + sorted((ROOT / 'src').glob('*.cpp'))
+         if str(p.relative_to(ROOT)) not in EXCLUDE]
 CMD = ['g++', '-E', '-std=c++17', '-DPTD_FAKE_TOUCH',
        '-I', 'build/claw4', '-I', 'sim', '-I', 'sim/compat', '-I', 'src', '-P']
 
@@ -55,6 +62,7 @@ def main():
                  '   共享层改动泄漏到 Claw4 了。请挪进能力宏（见 tools/layout.py），'
                  '或有意改动时 --update 并说明原因。')
     print(f'✅ 零位移：Claw4 共享层预处理哈希与基线一致（{d[:16]}）')
+    print(f'   覆盖 {len(FILES)} 个共享文件；排除 {sorted(EXCLUDE)}（设备侧 shim；改动它要先问）')
     return 0
 
 
