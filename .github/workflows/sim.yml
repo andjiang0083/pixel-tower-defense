@@ -122,6 +122,13 @@ jobs:
 
       # ── 单一真源纪律：改生成器必须重新生成，且生成结果必须入库 ──────
       # v0.5.0：路径从 src/config_gen.h 改为 build/<profile>/config_gen.h
+      # ── 台账 vs 线上商店（零登录对账，v0.5.4 起）─────────────────────
+      # 为什么放进 CI：2026-10-17 漂移事故的形态是"线上发过一版、仓库台账没回灌"，
+      # 靠人记得跑巡检不成立。判据是**版本先后**（线上版本 > 台账记录 = 红灯）。
+      # 离线/接口不可达时只警告，不算失败（避免网络抖动变红）。
+      - name: 台账对账 — publish.yaml vs M5Burner 线上（零登录）
+        run: python3 tools/gh_preflight.py --pre
+
       - name: config_gen.h must match tools/layout.py (tab5)
         run: git diff --exit-code build/tab5/config_gen.h
 
