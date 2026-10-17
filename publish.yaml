@@ -10,4 +10,4 @@ platform_entries:
     bin: releases/pixel-tower-defense-v0.5.4-tab5-merged.bin
     cover: releases/cover-1280x720-pixel-tower-defense-tab5.png
     project_link: "https://github.com/andjiang0083/pixel-tower-defense"
-    readback: 2026-10-17 PENDING vid=2111386600555761665（0.5.3 坏镜像同队列待审，待定）
+    readback: 2026-10-17 PENDING vid=2111386600555761665（0.5.3 坏镜像已于同日从商店删除，见 store-copy.json）
