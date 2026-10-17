@@ -13,6 +13,21 @@
 // 值由模拟器反推（20 关全部 bot 可通的最低档），不要手拍。
 #define PTD_DIFF_SCALE 1.00f
 
+// ── profile 能力宏（v0.5.3）─────────────────────────────────────────
+// 共享层（i18n.h / pixel_text.h / render.h）只认能力，不认板名：
+//   1 = 这个 profile 放得下 16x16 中文字形（双语界面 + 标题界面语言按钮）
+//   0 = 单语（英文），中文那整条链路（CN 表/字库/按钮/NVS "lang"）不参与编译
+// 为什么不是按板名开关：board-specific `#if` 写在共享层 = 板级差异泄漏到共享层，
+//   就是 v0.5.0「为 Claw4 删掉 Tab5 的中文」那一轮的形状。
+// 依据：中文字形 17px/字（不随 scale 缩），claw4 的 116px 槽 / 202px 面板放不下。
+#define PTD_HAS_CJK 1
+
+// ── 另一个 profile 能力（v0.5.3）：背景格子缓存块拷贝 ────────────────
+//   1 = 擦背景格子走"一格一次 pushImage"（后台先缓存每类格子的 40x40 像素）
+//   0 = 逐矩形重画（Claw4 现状；它的帧缓冲写法不同，等它自己量完再开）
+// 为什么是能力宏而不是板名：同 PTD_HAS_CJK，板级差异不许写进共享层。
+#define PTD_BG_TILE_BLIT 1
+
 #define SCREEN_W      1280
 #define SCREEN_H      720
 #define CELL          40
@@ -129,7 +144,9 @@ static const Waypoint ALL_WP[] = { {2,0}, {31,7}, {0,7}, {6,0}, {31,2}, {6,2}, {
 #define OVERLAP_MS      5000
 #define OVERLAP_LEFTOVER_PCT 50   // 本波幸存者 ≤ 本波规模的百分之几（v0.5.2）
 #define OVERLAP_LEFTOVER_MIN 2   // 至少留这么多只（小波兜底，v0.5.2）
-#define OVERLAP_FIELD_MAX    16   // 场上总数 ≥ 此值 → 不压叠（帧预算红线，v0.5.2）
+// ⛔ 已删除（v0.5.3）：曾有的 OVERLAP_FIELD_MAX（场上总数红线）——
+//   那是拿"少放敌人"绕开帧预算问题；真机实测修掉擦格碎块税后 48 只同屏 30fps 稳，
+//   判据已删（见 docs/FIXLOG-v0.5.3.md）。
 
 struct TowerType { const char* key; const char* disp; int cost, range_px, fire_ms,
                    damage, proj_speed, splash_r; uint8_t behavior; };

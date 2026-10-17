@@ -5,13 +5,24 @@
 // 字形来自 tools/gen_font.py 生成的 pixel_font.h（5x7，bit4=最左列）
 // scale=2 → 10x14 px；scale=3 → 15x21 px。
 //
-// v0.5.0：删掉中文 16x16 路径（cn_font.h / px_cnChar / CN_ADV / s_cnMissing）。
-//   原因见 i18n.h 头注——Claw4 的 720 宽放不下 17px/字的固定宽度中文。
-//   现在 px_text 遇到 >=0x80 的字节直接跳过（当作 1 字符宽的空白），
-//   不再是"静默不画还把游标推 3 字节"的中文分支。
+// ── 中文路径（PTD_HAS_CJK=1 的 profile）──────────────────────────────
+// v0.4.2：中文走 tools/gen_cnfont.py 生成的 cn_font.h（16x16）。
+//   px_text/px_textWidth 遇 UTF-8 高位字节自动切中文路径——调用方零感知。
+//   中文固定 16x16（不随 scale 放大）：与 scale3 的 ASCII（15x21）高度协调，
+//   且汉字笔画密，放大会糊。混排宽度 = 17px/字（含 1px 缝）。
+//
+// ⚠️ v0.5.3：这条路径由 **能力宏** PTD_HAS_CJK 守卫，不再由"仓库里有没有这份代码"
+//   决定。v0.5.0 曾为 Claw4 的 720 窄屏把整条中文链路从共享层删掉 —— 结果是
+//   1280 的 Tab5（放得下）也失去双语。现在：
+//     PTD_HAS_CJK=1（tab5）→ 本文件的 CN 分支 + cn_font.h 参与编译；
+//     PTD_HAS_CJK=0（claw4）→ 只编 ASCII 路径，**与 v0.5.0~v0.5.2 逐字节等价**
+//       （>=0x80 的字节按空白跳过：不是"静默不画还把游标推 3 字节"的老中文分支）。
 #pragma once
 #include "gfx.h"
 #include "pixel_font.h"
+#if PTD_HAS_CJK
+#include "cn_font.h"
+#endif
 
 // scale=2 → 10x14 px；scale=3 → 15x21 px。Tab5 是 720p，字要放大才够远看清
 // v0.4.1：行内连续置位合并成一次 fillRect（RLE）——输出像素与逐列画完全
@@ -36,18 +47,77 @@ static inline void px_char(Gfx* g, int x, int y, char ch, uint16_t c, int scale)
   }
 }
 
+#if PTD_HAS_CJK
+// ── 中文路径：UTF-8 3 字节序列 → 16x16 点阵 ─────────────────────────
+// 线性扫小字表（<200 字，每字 3 字节比较；界面文本短，成本可忽略）
+// v0.4.3：缺字计数。v0.4.2 的 drawTitle 硬编码"像素塔防"绕过 STR_CN 表，
+// gen_cnfont 没收这些字 → 中文开机标题缺 3 字，px_cnChar 静默跳过，
+// 编译器和 CI 都不响。现在每次跳过累加本计数器；仿真渲染完全部界面后
+// 断言 s_cnMissing == 0（sim/run.cpp checkUiTextFit）——固件零打印成本
+// （一个 int 自增），换"任何漏收字都会在 CI 红"。
+static int s_cnMissing = 0;
+static inline const uint8_t* cnGlyphRows(const char* s) {
+  const uint8_t* p = (const uint8_t*)s;
+  for (int i = 0; i < CN_GLYPH_COUNT; ++i) {
+    const uint8_t* q = (const uint8_t*)CN_GLYPHS[i].utf8;
+    if (p[0] == q[0] && p[1] == q[1] && p[2] == q[2]) return CN_GLYPHS[i].rows;
+  }
+  ++s_cnMissing;                        // 未收字：计数（仿真断言为 0）
+#ifdef PTD_DEBUG_MISSING_GLYPH
+  fprintf(stderr, "MISSING GLYPH: %02X%02X%02X\n", p[0], p[1], p[2]);
+#endif
+  return nullptr;                       // 渲染上按空格跳过（不能崩）
+}
+
+// 与 px_char 同款 RLE 合并（每行 16 位 = 两字节拼）
+static inline void px_cnChar(Gfx* g, int x, int y, const char* s, uint16_t c) {
+  const uint8_t* rows = cnGlyphRows(s);
+  if (!rows) return;
+  for (int r = 0; r < CN_FONT_H; ++r) {
+    const uint16_t bits = (uint16_t)((rows[r * 2] << 8) | rows[r * 2 + 1]);
+    int col = 0;
+    while (col < CN_FONT_W) {
+      if (!(bits & (1 << (CN_FONT_W - 1 - col)))) { ++col; continue; }
+      int run = 0;
+      while (col + run < CN_FONT_W && (bits & (1 << (CN_FONT_W - 1 - col - run)))) ++run;
+      g->fillRect(x + col, y + r, run, 1, c);
+      col += run;
+    }
+  }
+}
+
+#define CN_ADV (CN_FONT_W + 1)             // 中文字间距（同 ASCII 留 1px 缝）
+#endif  // PTD_HAS_CJK
+
 // 返回绘制后的 x（便于链式排版）；遇到未映射字符按空格跳过
 static inline int px_text(Gfx* g, int x, int y, const char* s,
                           uint16_t c, int scale) {
   const int adv = (FONT_W + 1) * scale;          // 字间留 1 像素缝，更像点阵
+#if PTD_HAS_CJK
+  while (*s) {
+    if ((uint8_t)*s >= 0x80) {                   // v0.4.2：UTF-8 中文序列
+      px_cnChar(g, x, y, s, c);
+      s += 3;                                    // 本项目只用 3 字节 UTF-8（CJK）
+      x += CN_ADV;
+      continue;
+    }
+    px_char(g, x, y, *s++, c, scale); x += adv;
+  }
+#else
   for (; *s; ++s) { px_char(g, x, y, *s, c, scale); x += adv; }
+#endif
   return x;
 }
 
 static inline int px_textWidth(const char* s, int scale) {
   const int adv = (FONT_W + 1) * scale;
   int w = 0;
-  for (const uint8_t* p = (const uint8_t*)s; *p; ++p) w += adv;
+  for (const uint8_t* p = (const uint8_t*)s; *p; ++p) {
+#if PTD_HAS_CJK
+    if (*p >= 0x80) { w += CN_ADV; p += 2; continue; }   // 中文 17px（+2 ⇒ 共跳 3 字节）
+#endif
+    w += adv;                                            // ASCII：每字节一个字
+  }
   return w ? w - scale : 0;                 // 去掉最后一个字间缝
 }
 

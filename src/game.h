@@ -1126,9 +1126,10 @@ static void gameUpdate(uint32_t dtMs) {
   if (s_overlapWave != g_w.wave) { s_overlapUntil = 0; s_overlapWave = g_w.wave; }
   if (g_w.state == ST_WAVE && g_w.toSpawn == 0 && !g_w.bossPending
       && g_w.wave < lvWaves()) {                 // v0.4：无尽用 lvWaves()（250）
-    int alive = 0;
-    for (int i = 0; i < MAX_ENEMIES; ++i) if (g_w.enemies[i].active) ++alive;
-    if (alive < OVERLAP_FIELD_MAX && waveSurvivors() <= overlapQuota()) {
+    // ⛔ v0.5.3：这里曾有第二条判据"场上总数 < OVERLAP_FIELD_MAX"——那是把
+    //   性能问题转嫁成"少放敌人"的出兵上限。真机负载态实测（48 只 + 20 塔，
+    //   30fps 稳）后已删除：**帧预算是渲染的事，不是波次的事**。
+    if (waveSurvivors() <= overlapQuota()) {
       if (s_overlapUntil == 0) s_overlapUntil = now + OVERLAP_MS;
       else if (now >= s_overlapUntil) { g_w.state = ST_READY; g_w.readyLeftMs = 1; }
     } else s_overlapUntil = 0;

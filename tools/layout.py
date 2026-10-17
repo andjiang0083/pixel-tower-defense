@@ -55,6 +55,10 @@ PROFILES = {
         # 浮层面板（居中；会自动夹到屏宽内，见 OVER_W 的 min）
         over_w=760,         # GAME OVER / LEVEL CLEAR 面板宽
         onboard_w=820,      # 首次引导对话框宽
+        # ── profile 能力（v0.5.3）：见 config_gen.h 里的 PTD_HAS_CJK ──
+        #   1280 宽放得下 4 汉字（17px/字 = 68px）；tab5 是双语设计基准。
+        cjk=1,
+        bg_tile=1,            # 背景格子缓存块拷贝（见 config_gen.h 的 PTD_BG_TILE_BLIT）
         desc="M5Stack Tab5 横屏 1280x720（原生目标）",
     ),
     "claw4": dict(
@@ -95,6 +99,13 @@ PROFILES = {
         sel_gap_x=22, sel_gap_y=18, sel_y0=80,
         # 浮层：会被 min(..., SCREEN_W-40) 夹到 680（720 上）。
         over_w=760, onboard_w=820,
+        # ── profile 能力（v0.5.3）：claw4 单语 ──
+        #   中文 16x16 字形固定 17px/字且**不随 scale 缩**（CN_FONT_H=16），
+        #   4 汉字 = 68px 起，装不进 116px 建造栏槽 / 202px 塔面板；720 宽也
+        #   没有余量加宽。将来要开：改这一格为 1 + 缩短文案或加宽槽（另起一轮）。
+        #   ⚠️ 这条曾是 v0.5.0 在**共享层删中文**的理由 —— 现在降级成这里的一个数字。
+        cjk=0,
+        bg_tile=0,            # Claw4 暂不开（它的渲染路径不同，要单独量）
         desc="nologotech Metalio Claw4 方形 720x720",
     ),
 }
@@ -188,9 +199,11 @@ AUTO_NEXT_MS = 7000     # v0.3.2：10s→7s，波间喘息缩短
 OVERLAP_MS   = 5000     # 本波清完后 5s 强开下波
 OVERLAP_LEFTOVER_PCT = 50   # 本波幸存者 ≤ 本波规模的一半才算清完（v0.5.2）
 OVERLAP_LEFTOVER_MIN = 2    # 兜底：小波（9 只）也要留 2 只的余量，别卡死收尾
-# 场上总敌数红线：≥ 16 只说明玩家已经落后，这时再压一波只是把帧预算烧光
-#   （实测 48 只时每帧 4192 次 fillRect，正常波 424 次）。★ 只堵雪崩，不堵正常压叠。
-OVERLAP_FIELD_MAX    = 16
+# ⛔ 已删除（v0.5.3）：曾经的"场上总敌数红线 OVERLAP_FIELD_MAX=16"。
+#   它是拿 PC 仿真的 fillRect 次数当负载代理量拍出来的**出兵上限**，等于用
+#   "少放敌人"绕开性能问题。真机负载态实测（Tab5，48 只同屏 + 20 座 3 级塔）：
+#   修掉擦格碎块税后 draw=18~30ms/33ms、30fps 稳 ⇒ 不需要限制出兵。
+#   详见 docs/FIXLOG-v0.5.3.md（含"每格 25 次 fillRect → 1 次 pushImage"的账）。
 
 TOWER_TYPES = [
     # behavior: 0=单体弹 1=溅射炮弹(仅地面) 2=冰霜光环 3=能量产出(不攻击) 4=激光瞬击(穿地面+空中)
@@ -835,7 +848,7 @@ def gen_header():
         sell=SELL_REFUND_PCT, wb=WAVE_BONUS_BASE, ws=WAVE_BONUS_STEP,
         hpg=HP_GROWTH, towers=towers_c, ups=ups_c, tml=TOWER_MAX_LEVEL,
         hpb=HP_BASE, kgp=KILL_GOLD_PCT, anm=AUTO_NEXT_MS, ovl=OVERLAP_MS,
-        olp=OVERLAP_LEFTOVER_PCT, olm=OVERLAP_LEFTOVER_MIN, ofm=OVERLAP_FIELD_MAX,
+        olp=OVERLAP_LEFTOVER_PCT, olm=OVERLAP_LEFTOVER_MIN,
         fsp=FROST_SLOW_PCT, fsm=FROST_SLOW_MS, kinds=kinds_c,
         ksw=K_SWARM, kar=K_ARMOR, kbo=K_BOSS, khe=K_HEAL,
         sb=SWARM_BURST, afw=ARMOR_FROM_WAVE,
@@ -863,7 +876,8 @@ def gen_header():
         sel_cols=SEL_COLS, sel_rows=SEL_ROWS,
         sel_node_w=SEL_NODE_W, sel_node_h=SEL_NODE_H,
         sel_gap_x=SEL_GAP_X, sel_gap_y=SEL_GAP_Y, sel_y0=SEL_Y0,
-        over_w=OVER_W, onboard_w=ONBOARD_W, ds=DIFF_SCALE)
+        over_w=OVER_W, onboard_w=ONBOARD_W, ds=DIFF_SCALE,
+        cjk=_P["cjk"], bgt=_P["bg_tile"])
     open(out_header(), "w").write(txt)
 
 HEADER_TPL = """// SPDX-License-Identifier: MIT
@@ -880,6 +894,21 @@ HEADER_TPL = """// SPDX-License-Identifier: MIT
 // 路径短 → 塔的输出窗口小"这个 design_range 管不到的二阶效应。
 // 值由模拟器反推（20 关全部 bot 可通的最低档），不要手拍。
 #define PTD_DIFF_SCALE %(ds).2ff
+
+// ── profile 能力宏（v0.5.3）─────────────────────────────────────────
+// 共享层（i18n.h / pixel_text.h / render.h）只认能力，不认板名：
+//   1 = 这个 profile 放得下 16x16 中文字形（双语界面 + 标题界面语言按钮）
+//   0 = 单语（英文），中文那整条链路（CN 表/字库/按钮/NVS "lang"）不参与编译
+// 为什么不是按板名开关：board-specific `#if` 写在共享层 = 板级差异泄漏到共享层，
+//   就是 v0.5.0「为 Claw4 删掉 Tab5 的中文」那一轮的形状。
+// 依据：中文字形 17px/字（不随 scale 缩），claw4 的 116px 槽 / 202px 面板放不下。
+#define PTD_HAS_CJK %(cjk)d
+
+// ── 另一个 profile 能力（v0.5.3）：背景格子缓存块拷贝 ────────────────
+//   1 = 擦背景格子走"一格一次 pushImage"（后台先缓存每类格子的 40x40 像素）
+//   0 = 逐矩形重画（Claw4 现状；它的帧缓冲写法不同，等它自己量完再开）
+// 为什么是能力宏而不是板名：同 PTD_HAS_CJK，板级差异不许写进共享层。
+#define PTD_BG_TILE_BLIT %(bgt)d
 
 #define SCREEN_W      %(sw)d
 #define SCREEN_H      %(sh)d
@@ -997,7 +1026,9 @@ static const Waypoint ALL_WP[] = { %(wp)s };
 #define OVERLAP_MS      %(ovl)d
 #define OVERLAP_LEFTOVER_PCT %(olp)d   // 本波幸存者 ≤ 本波规模的百分之几（v0.5.2）
 #define OVERLAP_LEFTOVER_MIN %(olm)d   // 至少留这么多只（小波兜底，v0.5.2）
-#define OVERLAP_FIELD_MAX    %(ofm)d   // 场上总数 ≥ 此值 → 不压叠（帧预算红线，v0.5.2）
+// ⛔ 已删除（v0.5.3）：曾有的 OVERLAP_FIELD_MAX（场上总数红线）——
+//   那是拿"少放敌人"绕开帧预算问题；真机实测修掉擦格碎块税后 48 只同屏 30fps 稳，
+//   判据已删（见 docs/FIXLOG-v0.5.3.md）。
 
 struct TowerType { const char* key; const char* disp; int cost, range_px, fire_ms,
                    damage, proj_speed, splash_r; uint8_t behavior; };

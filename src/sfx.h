@@ -79,6 +79,16 @@ static bool     s_muted = false;
 static uint32_t s_simPlay[SFXID_COUNT];    // 仿真记账：每音效"起播"次数
 #endif
 
+// v0.5.3 性能探针（默认关，PTD_PERF_PROBE 未定义 = 0 ⇒ 这行不参与编译）：
+// 数"真的起播了几条 PCM"。判定"音效洪峰是不是卡顿源"需要的是**起播数**，
+// 不是投递数——投递早在 sfxPost 里被节流掉一大半，只看投递会低估。
+#ifndef PTD_PERF_PROBE
+#define PTD_PERF_PROBE 0
+#endif
+#if PTD_PERF_PROBE
+static uint32_t s_probePlayed = 0;
+#endif
+
 static inline void sfxSetMuted(bool m) { s_muted = m; }
 static inline bool sfxIsMuted(void)    { return s_muted; }
 
@@ -162,6 +172,9 @@ static void sfxPump(void) {
   while (budget-- > 0 && s_qTail != s_qHead) {
     uint8_t id = s_q[s_qTail];
     s_qTail = (uint8_t)((s_qTail + 1) % SFX_QUEUE);
+#if PTD_PERF_PROBE
+    ++s_probePlayed;
+#endif
     switch (id) {
       case SFXID_GUN:    SFX_PLAY(SFX_GUN, SFX_GUN_LEN); break;
       case SFXID_GUN2:   SFX_PLAY(SFX_GUN2, SFX_GUN2_LEN); break;

@@ -242,6 +242,39 @@ class GfxFb : public Gfx {
     dirtyAdd(x, y, x, y);
   }
 
+  // ── 块拷贝（v0.5.3）：行级转换 + 整行 memcpy（PC 仿真与 Claw4 都走这条）──
+  virtual void pushImage(int32_t x, int32_t y, int32_t ww, int32_t hh,
+                         const uint16_t* data) override {
+    if (!fb_ || !data || ww <= 0 || hh <= 0) return;
+    int32_t x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
+    int32_t x1 = x + ww > w ? w : x + ww;
+    int32_t y1 = y + hh > h ? h : y + hh;
+    if (x0 >= x1 || y0 >= y1) return;
+    const size_t stride = (size_t)w * PTD_FB_PX_BYTES;
+    for (int32_t yy = y0; yy < y1; ++yy) {
+      const uint16_t* src = data + (size_t)(yy - y) * ww + (size_t)(x0 - x);
+      uint8_t* dst = (uint8_t*)fb_ + (size_t)yy * stride + (size_t)x0 * PTD_FB_PX_BYTES;
+      for (int32_t xx = x0; xx < x1; ++xx, ++src) {
+        const uint16_t c = *src;
+#if PTD_FB_BPP == 24
+        // 与 fillRect/drawPixel 同一份字节序（B,G,R）与同一套位复制展开
+        const uint8_t r5 = (uint8_t)((c >> 11) & 0x1F);
+        const uint8_t g6 = (uint8_t)((c >> 5)  & 0x3F);
+        const uint8_t b5 = (uint8_t)( c        & 0x1F);
+        dst[0] = (uint8_t)((b5 << 3) | (b5 >> 2));
+        dst[1] = (uint8_t)((g6 << 2) | (g6 >> 4));
+        dst[2] = (uint8_t)((r5 << 3) | (r5 >> 2));
+        dst += 3;
+#else
+        dst[0] = (uint8_t)(c & 0xFF); dst[1] = (uint8_t)(c >> 8);
+        dst += 2;
+#endif
+      }
+    }
+    pxFilled += (uint64_t)(x1 - x0) * (uint64_t)(y1 - y0);
+    dirtyAdd(x0, y0, x1 - 1, y1 - 1);
+  }
+
   // 原始指针（BSP / 截图都从这里取；GfxFb 不解释它的像素格式）
   virtual void* fb() override { return fb_; }
   // 16bpp 视图（PC 侧 PTD_FB_BPP=16 时用；24bpp 下不要调它）

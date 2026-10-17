@@ -46,9 +46,9 @@ static inline void resetRenderCaches(void) {
 static void drawSiege(Gfx* g);
 
 // ── 画一个格子的底色（草地棋盘纹 / 土路抖动纹）───────────────────
-static void drawCellBase(Gfx* g, int col, int row) {
-  const int x = col * CELL;
-  const int y = MAP_TOP + row * CELL;
+// v0.5.3：拆出"画在任意 (x,y)"的版本——背景格子缓存要用它把同一格渲进
+//   一块 40x40 内存（因此缓存与直画**逐像素相同**，不是两套画法）。
+static void drawCellBaseAt(Gfx* g, int x, int y, int col, int row) {
 
   if (g_w.path[col][row]) {
     g->fillRect(x, y, CELL, CELL, TH().pathA);
@@ -79,6 +79,97 @@ static void drawCellBase(Gfx* g, int col, int row) {
   g->fillRect(x, y, CELL, 1, C_GRASS_EDGE);          // 网格线（横）
   g->fillRect(x, y, 1, CELL, C_GRASS_EDGE);          // 网格线（竖）
 }
+
+// 按格坐标画（原入口，调用点保持不动）
+static void drawCellBase(Gfx* g, int col, int row) {
+  drawCellBaseAt(g, col * CELL, MAP_TOP + row * CELL, col, row);
+}
+
+// ── v0.5.3：背景格子缓存（PTD_BG_TILE_BLIT=1 的 profile）─────────────
+// 真机实测（Tab5，44 只同屏 + 20 座 3 级塔，~100 个脏格/帧）：
+//   擦格 = 渲染总耗时的 **70%**（24ms/33ms），而瓶颈不是带宽是**调用次数**——
+//   一格 40x40 要 25+ 次 fillRect 拼抖动纹理；把抖动/网格线整体去掉后
+//   同负载 fillRect 2100→700、擦格 24ms→10ms，**像素数几乎没变**。
+// 做法：每类**变体**的格子预先画一次（用同一份 drawCellBaseAt，故逐像素相同），
+//   擦格时一次 pushImage 写回整格（1 次调用 vs 25+ 次）。
+// 变体键 = (path|blocked|棋盘奇偶, 四邻是否也是路)；一张图上取值有限（实测 ≤16）。
+// ⚠️ 主题随关卡变 ⇒ 缓存按 g_lv 失效重建。
+// ⚠️ 分配失败/变体超上限 ⇒ 静默退回逐矩形重画（慢但正确，绝不崩）。
+// ⚠️ s_tileOff：给仿真做"块拷贝 vs 逐矩形逐像素相等"断言用的开关。
+#if PTD_BG_TILE_BLIT
+#define BG_TILE_MAX 24                    // 24 类 × 40×40×2B = 76.8KB
+static uint16_t* s_tileBuf = nullptr;
+static uint8_t   s_tileKey[BG_TILE_MAX][2];
+static int       s_tileN = 0;
+static int16_t   s_tileLv = -1;           // 缓存属于哪一关（-1 = 空）
+static bool      s_tileOff = false;       // 仅仿真 A/B 用
+
+// 40x40 小画布：把 drawCellBaseAt 的输出渲进一块内存（不碰显示后端）
+struct TileCanvas : Gfx {
+  uint16_t* b;
+  explicit TileCanvas(uint16_t* buf) : b(buf) { w = CELL; h = CELL; }
+  void fillRect(int32_t x, int32_t y, int32_t ww, int32_t hh, uint16_t c) override {
+    int32_t x1 = x + ww, y1 = y + hh;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x1 > CELL) x1 = CELL;
+    if (y1 > CELL) y1 = CELL;
+    for (int32_t yy = y; yy < y1; ++yy) {
+      uint16_t* row = b + (size_t)yy * CELL;
+      for (int32_t xx = x; xx < x1; ++xx) row[xx] = c;
+    }
+  }
+  void drawRect(int32_t x, int32_t y, int32_t ww, int32_t hh, uint16_t c) override {
+    if (ww <= 0 || hh <= 0) return;
+    fillRect(x, y, ww, 1, c); fillRect(x, y + hh - 1, ww, 1, c);
+    fillRect(x, y, 1, hh, c); fillRect(x + ww - 1, y, 1, hh, c);
+  }
+  void fillScreen(uint16_t c) override {
+    for (size_t i = 0; i < (size_t)CELL * CELL; ++i) b[i] = c;
+  }
+  void drawPixel(int32_t x, int32_t y, uint16_t c) override {
+    if (x < 0 || y < 0 || x >= CELL || y >= CELL) return;
+    b[(size_t)y * CELL + x] = c;
+  }
+  void* fb() override { return b; }
+};
+
+// 换关/首次 ⇒ 重建缓存（分配一次，24 格全用满也就 76.8KB）
+static void bgTilesEnsure(Gfx* g) {
+  if (s_tileLv == (int16_t)g_lv) return;
+  if (s_tileBuf) { g->freeTile(s_tileBuf); s_tileBuf = nullptr; }
+  s_tileN = 0;
+  s_tileLv = (int16_t)g_lv;
+  s_tileBuf = (uint16_t*)g->allocTile((size_t)BG_TILE_MAX * CELL * CELL * sizeof(uint16_t));
+  // 分配失败 ⇒ s_tileBuf 保持 nullptr ⇒ cellTile 恒返回 nullptr ⇒ 逐矩形路径
+}
+
+// 取（或首次生成）某格的缓存块；返回 nullptr = 调用方走逐矩形路径
+static const uint16_t* cellTile(int col, int row) {
+  if (!s_tileBuf || s_tileOff) return nullptr;
+  const uint8_t k0 = (uint8_t)((g_w.path[col][row] ? 1 : 0)
+                             | (g_w.blocked[col][row] ? 2 : 0)
+                             | (((col + row) & 1) ? 4 : 0));
+  uint8_t k1 = 0;
+  if (g_w.path[col][row]) {
+    if (col > 0 && g_w.path[col - 1][row])            k1 |= 1;   // 左邻是路
+    if (col + 1 < COLS && g_w.path[col + 1][row])      k1 |= 2;   // 右邻是路
+    if (row > 0 && g_w.path[col][row - 1])             k1 |= 4;   // 上邻是路
+    if (row + 1 < MAP_ROWS && g_w.path[col][row + 1])  k1 |= 8;   // 下邻是路
+  }
+  for (int i = 0; i < s_tileN; ++i)
+    if (s_tileKey[i][0] == k0 && s_tileKey[i][1] == k1)
+      return s_tileBuf + (size_t)i * CELL * CELL;
+  if (s_tileN >= BG_TILE_MAX) return nullptr;      // 变体超上限：退回直画
+  uint16_t* buf = s_tileBuf + (size_t)s_tileN * CELL * CELL;
+  TileCanvas tc(buf);
+  drawCellBaseAt(&tc, 0, 0, col, row);             // 同一份画法 ⇒ 逐像素相同
+  s_tileKey[s_tileN][0] = k0;
+  s_tileKey[s_tileN][1] = k1;
+  ++s_tileN;
+  return buf;
+}
+#endif  // PTD_BG_TILE_BLIT
 
 // ── HUD 横向布局（v0.4.3 从散落的硬编码 x 收敛为命名常量）────────
 // 起因：三处硬编码 x 互相踩雷——
@@ -598,11 +689,18 @@ static void drawFx(Gfx* g, const Fx& f) {
 
 // ── 擦除脏格子（把上一帧的实体痕迹恢复成地图底色）────────────────
 static void eraseDirty(Gfx* g) {
+#if PTD_BG_TILE_BLIT
+  bgTilesEnsure(g);
+#endif
   for (int r = 0; r < MAP_ROWS; ++r)
     for (int c = 0; c < COLS; ++c) {
       if (!g_w.dirty[c][r]) continue;
       g_w.dirty[c][r] = false;
-      drawCellBase(g, c, r);
+#if PTD_BG_TILE_BLIT
+      const uint16_t* t = cellTile(c, r);
+      if (t) { g->pushImage(c * CELL, MAP_TOP + r * CELL, CELL, CELL, t); continue; }
+#endif
+      drawCellBase(g, c, r);          // 退路：缓存不可用（分配失败/变体超限/仿真 A/B）
     }
 }
 
@@ -797,18 +895,39 @@ static void closeTowerPanel(Gfx* g) {
   g_panelOpen = false;
 }
 
+#if PTD_PERF_PROBE
+// v0.5.3 性能探针：渲染分段计时（默认关 ⇒ 发行固件零成本）。
+// 为什么要拆到段：只知道"draw=21ms"没法决定砍谁——擦脏格/塔/敌人/子弹/HUD
+// 的成本来源完全不同（带宽 vs 调用次数 vs 逻辑），混在一起看会砍错段。
+static inline uint32_t p_eraseUs = 0, p_towerUs = 0, p_enemyUs = 0,
+                       p_bulletUs = 0, p_fxUs = 0, p_hudUs = 0;
+#define PTD_PSEG_T0()      uint32_t _ps0 = micros()
+#define PTD_PSEG_T(acc)    do { (acc) += micros() - _ps0; _ps0 = micros(); } while (0)
+#define PTD_PSEG_END(acc)  do { (acc) += micros() - _ps0; } while (0)
+#else
+#define PTD_PSEG_T0()      do {} while (0)
+#define PTD_PSEG_T(acc)    do {} while (0)
+#define PTD_PSEG_END(acc)  do {} while (0)
+#endif
+
 // ── 每帧渲染主体：擦脏格 → 塔 → 敌人 → 子弹 → 特效 ──────────────
 static void renderFrame(Gfx* g) {
   // v0.4.2：标题界面是静态屏（真机 loop 在 ST_TITLE 直接 return，永不进来）。
   // 这里是防御性早退：万一别的路径调到 renderFrame，也不会把世界/HUD
   // 画到标题界面上（仿真曾因此把上一局 HUD 混进标题帧截图）。
   if (g_w.state == ST_TITLE) return;
+  PTD_PSEG_T0();
   eraseDirty(g);
+  PTD_PSEG_T(p_eraseUs);
 
   for (int i = 0; i < MAX_TOWERS; ++i) if (g_w.towers[i].active) drawTower(g, g_w.towers[i]);
+  PTD_PSEG_T(p_towerUs);
   for (int i = 0; i < MAX_ENEMIES; ++i) if (g_w.enemies[i].active) drawEnemy(g, g_w.enemies[i]);
+  PTD_PSEG_T(p_enemyUs);
   for (int i = 0; i < MAX_BULLETS; ++i) if (g_w.bullets[i].active) drawBullet(g, g_w.bullets[i]);
+  PTD_PSEG_T(p_bulletUs);
   for (int i = 0; i < MAX_FX; ++i)     if (g_w.fx[i].active)       drawFx(g, g_w.fx[i]);
+  PTD_PSEG_T(p_fxUs);
 
   // v0.4.2：SIEGE 封锁区（最上层：压着塔与兵，一眼看见"这里不能建"）
   drawSiege(g);
@@ -840,6 +959,7 @@ static void renderFrame(Gfx* g) {
   } else {
     if (g_panelOpen) closeTowerPanel(g);
   }
+  PTD_PSEG_END(p_hudUs);
 }
 
 // ── 建造反馈：合法=绿闪，非法（路径/占用/缺金币）=红叉 ────────────
@@ -1069,7 +1189,7 @@ static void drawTitle(Gfx* g) {
   drawRainbow(g, SCREEN_W / 2, TITLE_Y2, "DEFENSE", 7, RC, 8);
 
   // 版本号（金色，v0.4.3 起每次发版手改这里 + banner + publish.yaml）
-  char vb[24]; strcpy(vb, "v0.5.2");
+  char vb[24]; strcpy(vb, "v0.5.3");
   px_textCenter(g, SCREEN_W / 2, TITLE_VER_Y, vb, C_GOLD, 3);
 
   // 装饰带：塔剪影 + 小兵 + 地面线（全部矩形，复用塔的配色语言）

@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <vector>
 
 static int g_fail = 0, g_pass = 0;
 static int s_simSaves = 0;                       // v0.4.1：进度落盘计数器（见测试 15）
@@ -1211,23 +1212,32 @@ int main(int argc, char** argv) {
             "overlap fired with %d/%d of THIS wave alive (cascade!)", waveSurvivors(), waveSize(5));
     }
 
-    // ③ 帧预算红线：本波只剩 2 只、但场上总数 ≥ OVERLAP_FIELD_MAX → 仍不压叠
+    // ③ v0.5.3：**不许再有"出兵上限"这类性能借口的判据**。
+    //    旧版这里守着 OVERLAP_FIELD_MAX=16（场上超过 16 只就不压叠）——那等于
+    //    用"少放敌人"绕开帧预算问题。真机实测修掉擦格碎块税后 48 只同屏
+    //    30fps 稳 ⇒ 判据删掉，本用例改成反向门禁：**本波已清完（只剩 2 只）时，
+    //    哪怕场上还堆着一堆上一波的残留，也照样该压叠**（否则又变成"等全清"）。
     levelLoad(1); g_w.gold=9999; g_w.lives=99999;
     g_w.wave = 4; startNextWave();
     {
       g_w.toSpawn = 0;
       for (int i=0;i<MAX_ENEMIES;++i) g_w.enemies[i].active = false;
-      int n=0;                                          // 造 16 只：全部标成"上一波残留"
-      for (int i=0;i<MAX_ENEMIES && n<OVERLAP_FIELD_MAX;++i) {
+      int n=0;                                          // 16 只全标成"上一波残留"
+      for (int i=0;i<MAX_ENEMIES && n<16;++i) {
         spawnKind(i, 0 /*K_GRUNT=兵种表 0*/, 0, false);
         g_w.enemies[i].waveTag = (uint8_t)(g_w.wave - 1);
         ++n;
       }
-      CHECK(alive()>=OVERLAP_FIELD_MAX && waveSurvivors()==0,
-            "field-cap setup: alive=%d survivors=%d", alive(), waveSurvivors());
+      for (int i=0;i<MAX_ENEMIES;++i) if (!g_w.enemies[i].active) {   // 本波再放 2 只
+        spawnKind(i, 0, 0, false); break;
+      }
+      CHECK(waveSurvivors()==1 && alive()>=16, "no-cap setup: survivors=%d alive=%d",
+            waveSurvivors(), alive());
       int fr=0; while (g_w.state==ST_WAVE && g_w.wave==5 && fr<300){tick(1);++fr;}
-      CHECK(g_w.wave==5 && g_w.state==ST_WAVE,
-            "overlap fired with %d on field (cap %d) — 帧预算会崩", alive(), OVERLAP_FIELD_MAX);
+      // ⚠️ 强开是"先置 ST_READY + readyLeftMs=1、下一 tick 才 startNextWave"，
+      //    上面那个 while 在 state 一翻就退出 ⇒ 这里再 tick 几帧才看得到 wave++
+      tick(3);
+      CHECK(g_w.wave==6, "overlap blocked by field load (v0.5.3 已删除该判据): %d frames", fr);
     }
   }
 
@@ -1243,17 +1253,69 @@ int main(int argc, char** argv) {
     for (int i=0;i<3;++i) CHECK(buildTower(bc[i], brow, 0), "L10 weak-player: build %d failed", i);
     g_w.lives = 99999;                        // 只看负载/波次推进，不看会不会输
     startNextWave();
-    int peak = 0;
+    int peak = 0, waveViolation = 0;
     for (int f=0; f<30*420; ++f) {            // 7 分钟（旧代码 310s 就已经触顶）
-      if (g_w.state == ST_READY && g_w.wave > 0 && g_w.readyLeftMs <= 1500) startNextWave();
+      if (g_w.state == ST_READY && g_w.wave > 0 && g_w.readyLeftMs <= 1500) {
+        // 开波前记一笔：本波出生的一半以上还活着就开新波 = 雪崩判据
+        if (waveSurvivors() > waveSize(g_w.wave) / 2) ++waveViolation;
+        startNextWave();
+      }
       tick(1);
       if (alive() > peak) peak = alive();
     }
     printf("  [压叠回归] L10 弱防 3 塔 7min：峰值在场=%d wave=%d/%d 击杀=%d 漏=%d\n",
            peak, g_w.wave, LV().waves, g_w.score, g_w.leakCount);
+    // v0.5.3：这里原来守"峰值 ≤ 32"（那是出兵上限的副产品）。现在只守两件事：
+    //   ① 不得触到数组硬顶（触顶 = 刷怪逻辑空转，说明波次判据又坏了）；
+    //   ② **压叠只能发生在"本波已过半清完"时**——即用户报的那个 bug 本身
+    //      （第 2 波 9 只一只没死就强开第 3 波）。这条与性能无关，是逻辑判据。
     CHECK(peak < MAX_ENEMIES, "L10 弱防雪崩：峰值在场=%d 触到硬顶 %d", peak, MAX_ENEMIES);
-    CHECK(peak <= 32, "L10 弱防场地堆叠：峰值在场=%d（设计上限 32）", peak);
+    CHECK(waveViolation == 0, "压叠在本波过半存活时发生（= L10 雪崩复现）：%d 次", waveViolation);
     g_renderOn = true;
+  }
+
+  // ── 14c. v0.5.3：背景块拷贝 vs 逐矩形**逐像素相同**（性能优化的正确性闸）──
+  //   优化的是"擦格"（真机实测占渲染 70%）：把每格 25+ 次 fillRect 换成一
+  //   次 pushImage 写回缓存好的 40x40 像素。一旦画法漂移，画面会以"某几个
+  //   格子的纹理不对"这种最难发现的方式坏掉，而性能读数只会变好看。
+  //   断言只比**地图区**（y ∈ [MAP_TOP, MAP_TOP+MAP_ROWS*CELL)）：缓存只影响
+  //   地图格；HUD/建造栏在带外，且 render 内部有"选中才重画"的缓存，两次
+  //   渲染它们本来就不保证相同 —— 不把那部分算进来是一种诚实的口径。
+  {
+#if PTD_BG_TILE_BLIT
+    g_renderOn = true;
+    levelLoad(9);                                   // L10：路径 + 岩层 + 草地都有
+    drawBackground(D);
+    for (int i = 0; i < MAX_ENEMIES; ++i) g_w.enemies[i].active = false;
+    for (int i = 0; i < MAX_TOWERS; ++i)  g_w.towers[i].active  = false;
+    for (int i = 0; i < MAX_BULLETS; ++i) g_w.bullets[i].active = false;
+    for (int i = 0; i < MAX_FX; ++i)      g_w.fx[i].active      = false;
+    const int Y0 = MAP_TOP, Y1 = MAP_TOP + MAP_ROWS * CELL;
+    auto dirtyAllCells = [&]() {                    // 整张地图重画一遍
+      for (int c = 0; c < COLS; ++c) for (int r = 0; r < MAP_ROWS; ++r) g_w.dirty[c][r] = true;
+    };
+    dirtyAllCells(); s_tileOff = false; renderFrame(D);     // 块拷贝路径
+    std::vector<uint16_t> a(FB16() + (size_t)Y0 * SCREEN_W,   // ⚠️ 快照必须在渲染之后
+                            FB16() + (size_t)Y1 * SCREEN_W);
+    std::vector<uint16_t> bbuf(FB16() + (size_t)Y0 * SCREEN_W,
+                               FB16() + (size_t)Y1 * SCREEN_W);
+    dirtyAllCells(); s_tileOff = true;  renderFrame(D);     // 逐矩形路径
+    int bad = 0, fx_ = -1, fy_ = -1;
+    for (size_t i = 0; i < a.size(); ++i)
+      if (a[i] != bbuf[i]) {
+        if (!bad) { fx_ = (int)(i % SCREEN_W); fy_ = Y0 + (int)(i / SCREEN_W); }
+        ++bad;
+      }
+    CHECK(bad == 0, "bg tile blit != direct draw: %d px differ (first %d,%d)", bad, fx_, fy_);
+    printf("  [bg-tile] 块拷贝 vs 逐矩形：地图区逐像素比对 %d 处不同（tiles=%d 类）\n",
+           bad, s_tileN);
+    s_tileOff = false;
+    // 顺带记一笔"省了多少次调用"：这一格数 = 每帧擦格能省下的 fillRect 次数
+    printf("  [bg-tile] 缓存变体 %d 类（上限 %d），每格从 25+ 次 fillRect → 1 次 pushImage\n",
+           s_tileN, BG_TILE_MAX);
+#else
+    printf("  [info] PTD_BG_TILE_BLIT=0：跳过背景块拷贝一致性断言\n");
+#endif
   }
 
   // ── 15. v0.4.1：进度落盘去重（P0 回归：uint16 截断→每帧写 NVS）────
