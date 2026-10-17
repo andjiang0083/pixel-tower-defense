@@ -38,8 +38,15 @@
 #include "touch.h"          // readTap()：非阻塞 tap-on-release
 #include "render.h"         // drawBackground / renderFrame / drawTitle
 #include "actions.h"        // handleTap / updateBuildFx / updateOverlays（内含 progress.h）
+#include "gfx_m5gfx.h"      // v0.5.2：M5GFX → Gfx 适配（Tab5 显示后端，见该文件头注）
 
 static Preferences s_prefs;
+
+// v0.5.2：显示设备。render.h / actions.h / pixel_text.h 自 v0.5.0 起只认 Gfx*，
+//   而 M5.Display 是 M5GFX —— 由 GfxM5 转发（Tab5 的帧缓冲归 M5GFX/esp_lcd 管）。
+//   （v0.5.0 引入这条抽象时漏了 Tab5 这条后端：固件一直停在 `&M5.Display`，
+//    编不过。仿真走 GfxFb、Claw4 走 GfxClaw4，Tab5 缺的就是本行。）
+static GfxM5 g_disp(&M5.Display);
 
 // v0.4.3：引导 overlay 的重画去重（见 loop 里的说明）
 static int8_t s_lastOnboardStep = 0;
@@ -80,7 +87,7 @@ void setup(void) {
   M5.begin(cfg);
   M5.Display.setRotation(3);              // Tab5 横屏 1280x720
 
-  Serial.printf("=== PIXEL TOWER DEFENSE v0.4.4 | board=%d | %dx%d ===\n",
+  Serial.printf("=== PIXEL TOWER DEFENSE v0.5.2 | board=%d | %dx%d ===\n",
                 (int)M5.getBoard(), SCREEN_W, SCREEN_H);
 
   // PSRAM 是帧缓冲所在地（DSI video mode）；没有就停下，别黑屏空转
@@ -105,7 +112,7 @@ void setup(void) {
 
   levelLoad(0);                       // 预载 L1（选关前世界已就绪）
   g_w.state = ST_TITLE;               // v0.4.2：开机先进标题界面
-  drawTitle(&M5.Display);
+  drawTitle(&g_disp);
 
   Serial.printf("unlock=%04X cleared=%04X levels=%d endbest=%d\n",
                 g_unlocked, g_cleared, LEVEL_COUNT, (int)g_endBest);
@@ -123,12 +130,12 @@ void loop(void) {
   esp_task_wdt_reset();
 
   Tap t = readTap();                      // 非阻塞：按住屏幕不会卡住世界
-  if (t.valid) handleTap(&M5.Display, t);
+  if (t.valid) handleTap(&g_disp, t);
 
   // 标题/选关界面：静态画面，无世界逻辑（handleTap 已处理跳转）；
   // v0.4.1：锁关红叉反馈在选关界面推进（20 帧后自擦）
   if (g_w.state == ST_TITLE) { delay(20); return; }
-  if (g_w.state == ST_SEL) { updateSelFx(&M5.Display); delay(20); return; }
+  if (g_w.state == ST_SEL) { updateSelFx(&g_disp); delay(20); return; }
 
   uint32_t now = millis();
   uint32_t dt = now - lastFrame;
@@ -137,7 +144,7 @@ void loop(void) {
   lastFrame = now;
 
   gameUpdate(dt);                            // ── 逻辑（不碰绘制）──
-  renderFrame(&M5.Display);                  // ── 渲染（不碰逻辑）──
+  renderFrame(&g_disp);                  // ── 渲染（不碰逻辑）──
   // v0.4.2：首次引导 overlay（对话框区域点击推进；NVS 记住只讲一次）
   //
   // ⚠️ v0.4.3 修掉一个真机必现崩溃：原来这里**每帧**无条件调 drawOnboard。
@@ -154,14 +161,14 @@ void loop(void) {
   if (g_onboardStep > 0 &&
       (g_w.state == ST_READY || g_w.state == ST_WAVE)) {
     if (g_onboardStep != s_lastOnboardStep) {
-      drawOnboard(&M5.Display, g_onboardStep);
+      drawOnboard(&g_disp, g_onboardStep);
       s_lastOnboardStep = g_onboardStep;
     }
   } else {
     s_lastOnboardStep = 0;
   }
-  updateBuildFx(&M5.Display);              // ── 建造反馈动画 ──
-  updateOverlays(&M5.Display);             // ── Game Over 覆盖层（只画一次）──
+  updateBuildFx(&g_disp);              // ── 建造反馈动画 ──
+  updateOverlays(&g_disp);             // ── Game Over 覆盖层（只画一次）──
 
   // v0.3.1：音效派发放帧间隙（渲染之后，上次实测音频 ~4ms/帧塞得进）
   s_nowMs = now;
