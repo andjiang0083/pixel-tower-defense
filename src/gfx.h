@@ -24,6 +24,9 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>         // allocTile/freeTile 用 malloc/free：声明必须由本头自带，
+                            // 不能依赖调用方先 include 别的头（CI run #11 就是
+                            // 24bpp 独立编译单元里 malloc/free 未声明而编译失败）
 #include "config_gen.h"     // SCREEN_W / SCREEN_H（尺寸真源 = tools/layout.py）
 
 class Gfx {
